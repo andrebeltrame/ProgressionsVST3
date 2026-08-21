@@ -106,6 +106,16 @@ StyleModel buildStyleModel(const std::vector<const LibraryEntry*>& entries,
 bool saveStyleModel(const std::string& path, const StyleModel& model, std::string& error);
 bool loadStyleModel(const std::string& path, StyleModel& model, std::string& error);
 
+/** The same JSON `saveStyleModel` writes, as a string. */
+std::string styleModelToJson(const StyleModel& model);
+/** Reads a model straight out of memory, so a host that bakes one into its
+    binary does not have to put it on disk first. `sourceName` only appears in
+    the error text. */
+bool parseStyleModel(const std::string& json,
+                     StyleModel& model,
+                     std::string& error,
+                     const std::string& sourceName = "style model");
+
 // --- Sampling, used by the generators ---------------------------------------
 
 /** Picks a bar of rhythm, preferring patterns that are common in the corpus and

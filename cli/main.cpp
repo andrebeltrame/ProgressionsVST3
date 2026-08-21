@@ -9,7 +9,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <map>
 #include <iomanip>
 #include <iostream>
@@ -300,10 +302,11 @@ void printUsage()
         "        One scan of a big drive, then as many focused models as you want.\n"
         "  --index <file>       index to learn from (default harmonia-library.json)\n"
         "  --style <file>       where to write the model (required)\n"
+        "  --install            also hand it to the plugin, for every instance\n"
         "  --quiet              no progress output\n"
         "\n"
         "  harmonia-cli scan /Volumes/Drive --index ~/all.json --no-learn\n"
-        "  harmonia-cli learn --index ~/all.json --tag \"melodic house\" --style ~/melodic.style.json\n"
+        "  harmonia-cli learn --index ~/all.json --tag \"melodic house\" --style ~/melodic.style.json --install\n"
         "  harmonia-cli --preset melodic-lift --style ~/melodic.style.json --part bass,melody\n";
 }
 
@@ -658,6 +661,60 @@ int runLibrary(const std::vector<std::string>& args)
 }
 
 // ---------------------------------------------------------------------------
+// Handing a model to the plugin
+// ---------------------------------------------------------------------------
+
+/** Where the plugin keeps the model every instance starts with. Mirrors
+    styleStore::directory() in plugin/Source/StyleStore.cpp - keep the two in
+    step, or --install will drop the file somewhere the plugin never looks. */
+std::filesystem::path pluginStyleDirectory()
+{
+    if (const char* override_ = std::getenv("HARMONIA_STYLE_DIR"))
+        if (*override_ != '\0')
+            return std::filesystem::path(override_);
+
+#if defined(_WIN32)
+    const char* appData = std::getenv("APPDATA");
+    return std::filesystem::path(appData != nullptr ? appData : ".") / "Harmonia";
+#else
+    const char* home = std::getenv("HOME");
+    const std::filesystem::path base(home != nullptr ? home : ".");
+ #if defined(__APPLE__)
+    return base / "Library" / "Application Support" / "Harmonia";
+ #else
+    return base / ".config" / "Harmonia";
+ #endif
+#endif
+}
+
+/** Copies a model in so the plugin loads it without being pointed at a path. */
+bool installStyleForPlugin(const std::string& source, std::string& installedPath, std::string& error)
+{
+    const auto directory = pluginStyleDirectory();
+    std::error_code code;
+    std::filesystem::create_directories(directory, code);
+    if (code)
+    {
+        error = "Could not create " + directory.string() + ": " + code.message();
+        return false;
+    }
+
+    const auto destination = directory / "library.style.json";
+    installedPath = destination.string();
+    if (std::filesystem::equivalent(source, destination, code))
+        return true;
+
+    std::filesystem::copy_file(source, destination,
+                               std::filesystem::copy_options::overwrite_existing, code);
+    if (code)
+    {
+        error = "Could not write " + destination.string() + ": " + code.message();
+        return false;
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // learn
 // ---------------------------------------------------------------------------
 
@@ -667,6 +724,7 @@ int runLearn(const std::vector<std::string>& args)
     std::string stylePath;
     LibraryQuery query;
     bool quiet = false;
+    bool install = false;
 
     for (size_t i = 0; i < args.size(); ++i)
     {
@@ -682,6 +740,7 @@ int runLearn(const std::vector<std::string>& args)
         else if (arg == "--with-drums")  query.excludeDrums = false;
         else if (arg == "--limit")       query.limit = static_cast<size_t>(std::stoul(value()));
         else if (arg == "--quiet")       quiet = true;
+        else if (arg == "--install")     install = true;
         else if (arg == "--key")
         {
             Key key;
@@ -759,6 +818,22 @@ int runLearn(const std::vector<std::string>& args)
     std::cout << "Wrote " << stylePath << "\n  " << model.summary() << "\n";
     if (! errors.empty())
         std::cout << "  " << errors.size() << " clips could not be read and were skipped\n";
+
+    if (install)
+    {
+        std::string installedPath;
+        std::string installError;
+        if (installStyleForPlugin(stylePath, installedPath, installError))
+            std::cout << "  Installed into the plugin: " << installedPath << "\n"
+                      << "  Every Harmonia instance will start with it.\n";
+        else
+            std::cerr << "  Could not install it into the plugin: " << installError << "\n";
+    }
+    else
+    {
+        std::cout << "  Add --install to hand it straight to the plugin ("
+                  << pluginStyleDirectory().string() << ").\n";
+    }
 
     const auto top = model.topProgressions(6);
     if (! top.empty())

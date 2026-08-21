@@ -1,6 +1,8 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+#include "StyleStore.h"
+
 #include "harmonia/MidiFile.h"
 #include "harmonia/StyleModel.h"
 
@@ -112,6 +114,8 @@ HarmoniaProcessor::HarmoniaProcessor()
         previewSynth.addVoice(new PreviewVoice());
 
     seed = static_cast<juce::uint32>(juce::Random::getSystemRandom().nextInt(1000000) + 1);
+
+    loadDefaultStyleModel();
 }
 
 HarmoniaProcessor::~HarmoniaProcessor()
@@ -426,7 +430,7 @@ juce::String HarmoniaProcessor::getProgressionText() const
     return engine.analysis().valid ? juce::String(engine.analysis().progressionString()) : juce::String();
 }
 
-bool HarmoniaProcessor::loadStyleModelFile(const juce::File& file)
+bool HarmoniaProcessor::loadStyleModelFile(const juce::File& file, bool install)
 {
     std::string error;
     harmonia::StyleModel loaded;
@@ -439,21 +443,93 @@ bool HarmoniaProcessor::loadStyleModelFile(const juce::File& file)
 
     styleModel = std::move(loaded);
     styleFile = file;
+    styleOrigin = StyleSource::Session;
     lastError.clear();
+
+    if (install)
+    {
+        juce::String installError;
+        if (styleStore::install(file, installError))
+        {
+            styleFile = styleStore::installedFile();
+            styleOrigin = StyleSource::Installed;
+        }
+        else
+        {
+            // The model still works for this instance; it just will not be
+            // there next time, and the user should know why.
+            lastError = "Loaded, but could not keep it in the plugin: " + installError.toStdString();
+        }
+    }
+
     regenerate();
     return true;
+}
+
+void HarmoniaProcessor::loadDefaultStyleModel()
+{
+    harmonia::StyleModel loaded;
+    std::string error;
+
+    if (styleStore::hasInstalled())
+    {
+        const auto file = styleStore::installedFile();
+        if (harmonia::loadStyleModel(file.getFullPathName().toStdString(), loaded, error))
+        {
+            styleModel = std::move(loaded);
+            styleFile = file;
+            styleOrigin = StyleSource::Installed;
+            return;
+        }
+    }
+
+    if (styleStore::hasBuiltIn())
+    {
+        const auto json = styleStore::builtInJson();
+        if (harmonia::parseStyleModel(json, loaded, error, "built-in style model"))
+        {
+            styleModel = std::move(loaded);
+            styleFile = juce::File();
+            styleOrigin = StyleSource::BuiltIn;
+            return;
+        }
+    }
+
+    styleModel = harmonia::StyleModel {};
+    styleFile = juce::File();
+    styleOrigin = StyleSource::None;
+}
+
+void HarmoniaProcessor::forgetInstalledStyleModel()
+{
+    styleStore::forget();
+    loadDefaultStyleModel();
+    regenerate();
 }
 
 void HarmoniaProcessor::clearStyleModel()
 {
     styleModel = harmonia::StyleModel {};
     styleFile = juce::File();
+    styleOrigin = StyleSource::None;
     regenerate();
 }
 
 juce::String HarmoniaProcessor::styleSummary() const
 {
     return styleModel.empty() ? juce::String() : juce::String(styleModel.summary());
+}
+
+juce::String HarmoniaProcessor::styleSourceText() const
+{
+    switch (styleOrigin)
+    {
+        case StyleSource::BuiltIn:   return "built into the plugin";
+        case StyleSource::Installed: return "kept in the plugin";
+        case StyleSource::Session:   return styleFile.getFileName();
+        case StyleSource::None:      break;
+    }
+    return {};
 }
 
 void HarmoniaProcessor::setForcedKey(bool forced, int tonic, harmonia::ScaleType scale)
@@ -584,7 +660,10 @@ void HarmoniaProcessor::getStateInformation(juce::MemoryBlock& destData)
     state.setProperty("seed", static_cast<juce::int64>(seed), nullptr);
     state.setProperty("sourceName", sourceName, nullptr);
     state.setProperty("keyForced", keyForced, nullptr);
-    if (styleFile != juce::File())
+    // Only a model loaded into this instance alone is worth writing down. The
+    // installed and built-in ones are found again wherever the project opens,
+    // which is the point of keeping them inside the plugin.
+    if (styleOrigin == StyleSource::Session && styleFile != juce::File())
         state.setProperty("styleFile", styleFile.getFullPathName(), nullptr);
     state.setProperty("keyTonic", keyTonic, nullptr);
     state.setProperty("keyScale", static_cast<int>(keyScale), nullptr);
@@ -622,17 +701,13 @@ void HarmoniaProcessor::setStateInformation(const void* data, int sizeInBytes)
         }
     }
 
+    // A per-session model overrides what the plugin carries, but only for this
+    // instance - reopening a project must never rewrite the installed model.
+    // When the path is gone (another machine, a moved drive) we simply keep
+    // the model the plugin came with.
     const juce::File savedStyle(state.getProperty("styleFile", "").toString());
     if (savedStyle.existsAsFile())
-    {
-        std::string styleError;
-        harmonia::StyleModel loaded;
-        if (harmonia::loadStyleModel(savedStyle.getFullPathName().toStdString(), loaded, styleError))
-        {
-            styleModel = std::move(loaded);
-            styleFile = savedStyle;
-        }
-    }
+        loadStyleModelFile(savedStyle, false);
     state.removeProperty("styleFile", nullptr);
 
     keyForced = state.getProperty("keyForced", false);

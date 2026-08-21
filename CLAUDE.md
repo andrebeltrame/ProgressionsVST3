@@ -37,6 +37,7 @@ The plugin needs JUCE plus the usual Linux dev packages (listed in the README):
 git clone --depth 1 --branch 8.0.6 https://github.com/juce-framework/JUCE.git external/JUCE
 cmake -S . -B build-plugin -G Ninja -DCMAKE_BUILD_TYPE=Release -DHARMONIA_BUILD_PLUGIN=ON
 cmake --build build-plugin        # ~5 min cold, LTO link dominates
+# add -DHARMONIA_STYLE_MODEL=<file.style.json> to bake a style model in
 ctest --test-dir build-plugin     # core tests + the plugin smoke test
 ```
 
@@ -142,6 +143,28 @@ looping is a modulo over `lengthPPQ`, split when a block crosses the loop point.
 
 Parameter changes go through an `AsyncUpdater`, so regeneration never happens on
 the audio thread.
+
+### The plugin carries the model, not a path
+
+A saved absolute path to someone's drive is worthless the moment the drive is
+unmounted or the project moves, so `plugin/Source/StyleStore.cpp` resolves the
+style model from three places, in this order: a file loaded into one instance
+(the only one written into the project state), the copy installed in the user's
+app-data folder, and one compiled into the binary with
+`-DHARMONIA_STYLE_MODEL=<file>` through `juce_add_binary_data`. Loading a model
+in the editor installs it, which is why every new instance already has a brain.
+
+Two rules hold that together: `styleStore::install()` parses before it copies,
+so a broken model cannot poison every future instance, and restoring state
+loads with `install = false`, so opening a project never rewrites the installed
+model. `parseStyleModel()` exists so the compiled-in model never needs a
+temporary file. `styleStore::directory()` spells out the path per platform
+rather than using `userApplicationDataDirectory`, which is `~/Library` on macOS
+and the bare home folder on Linux; `harmonia-cli learn --install` mirrors those
+paths and has to be changed with it.
+
+The plugin smoke test points `HARMONIA_STYLE_DIR` at a temp folder before it
+constructs anything - without that it would overwrite a real installation.
 
 ## Conventions
 

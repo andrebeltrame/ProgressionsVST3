@@ -264,9 +264,46 @@ modelo. E para ver o que a sua coleção anda tocando:
 harmonia-cli library --index ~/harmonia-library.json --progressions
 ```
 
-No **plugin**: **Learn from my library…** carrega o `.style.json`, o toggle
-**Write in my style** liga, e o botão **My style** dosa o quanto. O caminho do
-modelo fica salvo no projeto.
+### O cérebro dentro do plugin
+
+O plugin não guarda um caminho para o seu HD — ele guarda o cérebro. Quando
+você escolhe um `.style.json` em **Learn from my library…**, o modelo é copiado
+para dentro do plugin:
+
+```
+~/Library/Application Support/Harmonia/library.style.json
+```
+
+A partir daí **toda instância nova, em qualquer projeto, já abre com ele
+carregado**. Você não aponta o arquivo de novo, e o projeto continua abrindo
+certo mesmo que você mova, renomeie ou apague o `.style.json` original — ou
+abra a sessão em outra máquina.
+
+O `learn` entrega o modelo direto, sem passar pelo plugin:
+
+```bash
+harmonia-cli learn --index ~/tudo.json --tag "melodic house"     --style ~/melodic.style.json --install
+```
+
+Clicando no botão de novo (**Change my library…**) você troca por outro cérebro
+ou usa **Forget this library** para voltar ao que veio de fábrica.
+
+**Dentro do binário.** Para um `.vst3` realmente autossuficiente — levar para
+outra máquina, ou não depender de pasta nenhuma — compile o modelo junto:
+
+```bash
+cmake -S . -B build-plugin -DCMAKE_BUILD_TYPE=Release   -DHARMONIA_BUILD_PLUGIN=ON -DHARMONIA_STYLE_MODEL=~/melodic.style.json
+```
+
+O modelo vira bytes dentro do plugin. O `prune` mantém o arquivo pequeno por
+mais gigante que seja a coleção, então isso custa umas poucas centenas de KB no
+binário, não os 227 mil arquivos.
+
+A ordem de precedência é: modelo carregado nesta instância → modelo instalado
+na pasta → modelo compilado no binário.
+
+O toggle **Write in my style** liga o cérebro e o knob **My style** dosa o
+quanto ele manda.
 
 ### Um cérebro por gênero
 

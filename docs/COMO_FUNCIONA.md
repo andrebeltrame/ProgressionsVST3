@@ -229,6 +229,29 @@ Tudo tem plano B: sem corpus, ou com `styleAmount` baixo, cada gerador volta
 para a heurística embutida. E `useStyle()` consulta o RNG, então a mesma semente
 com e sem modelo produz resultados diferentes — o que é o esperado.
 
+### Onde o modelo mora
+
+Um plugin que guarda o caminho `/Volumes/KINGSTON/...` dentro do projeto quebra
+na primeira vez que o HD não está montado. Então o plugin guarda o **modelo**,
+não o caminho. `plugin/Source/StyleStore.cpp` resolve três origens, nesta ordem:
+
+1. **Sessão** — um `.style.json` carregado só nesta instância. É a única origem
+   que vai para o estado do projeto, porque é a única que o projeto conhece.
+2. **Instalado** — `~/Library/Application Support/Harmonia/library.style.json`
+   (`~/.config/Harmonia` no Linux, `%APPDATA%` no Windows). Escolher um modelo
+   no editor copia para lá, e toda instância nova nasce com ele.
+3. **Compilado** — `-DHARMONIA_STYLE_MODEL=<arquivo>` transforma o JSON em bytes
+   dentro do binário via `juce_add_binary_data`, e `parseStyleModel()` lê direto
+   da memória, sem passar por disco. É o que torna o `.vst3` autossuficiente.
+
+`install()` faz o parse antes de copiar: um modelo inválido instalado seria um
+erro em toda instância futura, não só nesta. E abrir um projeto nunca reescreve
+o modelo instalado — carregar do estado passa `install = false`.
+
+O tamanho não é um problema porque `prune()` limita o modelo (256 padrões por
+papel, 128 voicings, 200 progressões), então 227 mil arquivos e 200 arquivos
+produzem um JSON da mesma ordem de grandeza.
+
 ### Limites
 
 O modelo é global: ele mistura tudo que foi escaneado numa passada. Para separar

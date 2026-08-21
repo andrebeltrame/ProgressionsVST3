@@ -40,10 +40,40 @@ juce_add_plugin(Harmonia
 target_sources(Harmonia PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
+    Source/StyleStore.cpp
     Source/UI/HarmoniaLookAndFeel.cpp
     Source/UI/PianoRollComponent.cpp
     Source/UI/ProgressionStrip.cpp
 )
+
+# Bake a style model into the binary, so the .vst3 carries the brain with it:
+#   -DHARMONIA_STYLE_MODEL=~/melodic.style.json
+# Without it the plugin still picks up a model installed from the editor; this
+# is for when the plugin itself has to be self-contained.
+set(HARMONIA_STYLE_MODEL "" CACHE FILEPATH
+    "A .style.json from 'harmonia-cli learn' to compile into the plugin")
+
+if(HARMONIA_STYLE_MODEL)
+    get_filename_component(HARMONIA_STYLE_MODEL_ABS "${HARMONIA_STYLE_MODEL}" ABSOLUTE)
+    if(NOT EXISTS "${HARMONIA_STYLE_MODEL_ABS}")
+        message(FATAL_ERROR "HARMONIA_STYLE_MODEL: no such file '${HARMONIA_STYLE_MODEL_ABS}'")
+    endif()
+
+    file(SIZE "${HARMONIA_STYLE_MODEL_ABS}" HARMONIA_STYLE_MODEL_BYTES)
+    math(EXPR HARMONIA_STYLE_MODEL_KB "${HARMONIA_STYLE_MODEL_BYTES} / 1024")
+    message(STATUS "Harmonia: baking in ${HARMONIA_STYLE_MODEL_ABS} (${HARMONIA_STYLE_MODEL_KB} KB)")
+
+    juce_add_binary_data(HarmoniaStyleData
+        HEADER_NAME "HarmoniaStyleData.h"
+        NAMESPACE HarmoniaStyleData
+        SOURCES "${HARMONIA_STYLE_MODEL_ABS}")
+    set_target_properties(HarmoniaStyleData PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+
+    target_link_libraries(Harmonia PRIVATE HarmoniaStyleData)
+    target_compile_definitions(Harmonia PRIVATE HARMONIA_HAS_EMBEDDED_STYLE=1)
+else()
+    target_compile_definitions(Harmonia PRIVATE HARMONIA_HAS_EMBEDDED_STYLE=0)
+endif()
 
 target_include_directories(Harmonia PRIVATE Source)
 

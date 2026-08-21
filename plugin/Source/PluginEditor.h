@@ -41,6 +41,7 @@ private:
     void refresh();
     void showLoadDialog();
     void showExportDialog();
+    void showStyleMenu();
     void showStyleDialog();
     void applyTypedProgression();
     void applyKeyFromControls();

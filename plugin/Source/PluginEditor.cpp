@@ -46,7 +46,11 @@ juce::String formatBpm(double bpm)
 juce::String styleRowText(const HarmoniaProcessor& processor)
 {
     const int clips = processor.styleClipCount();
-    return juce::String(clips) + (clips == 1 ? " clip learned" : " clips learned");
+    auto text = juce::String(clips) + (clips == 1 ? " clip" : " clips");
+    const auto source = processor.styleSourceText();
+    if (source.isNotEmpty())
+        text += "  (" + source + ")";
+    return text;
 }
 } // namespace
 
@@ -248,8 +252,9 @@ HarmoniaEditor::HarmoniaEditor(HarmoniaProcessor& p)
     addAndMakeVisible(applyProgressionButton);
 
     // ---- Your own collection ------------------------------------------------
-    styleButton.setTooltip("Load the .style.json that 'harmonia-cli scan' learned from your MIDI folder");
-    styleButton.onClick = [this] { showStyleDialog(); };
+    styleButton.setTooltip("The library the generators write from. Loading one keeps it inside the plugin, "
+                           "so every new instance starts with it");
+    styleButton.onClick = [this] { showStyleMenu(); };
     addAndMakeVisible(styleButton);
 
     styleToggle.setTooltip("Write bars, movements and voicings the way your own clips do");
@@ -398,7 +403,7 @@ void HarmoniaEditor::refresh()
     styleToggle.setEnabled(processor.hasStyleModel());
     styleKnob.slider.setEnabled(processor.hasStyleModel());
     styleKnob.label.setEnabled(processor.hasStyleModel());
-    styleButton.setButtonText(processor.hasStyleModel() ? "Reload my library..." : "Learn from my library...");
+    styleButton.setButtonText(processor.hasStyleModel() ? "Change my library..." : "Learn from my library...");
 
     resetChordsButton.setEnabled(hasSource || processor.hasWrittenProgression());
     diceButton.setEnabled(hasSource || analysis.valid);
@@ -474,9 +479,33 @@ void HarmoniaEditor::showLoadDialog()
                          });
 }
 
+void HarmoniaEditor::showStyleMenu()
+{
+    if (! processor.hasStyleModel())
+    {
+        showStyleDialog();
+        return;
+    }
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader(juce::String(processor.styleClipCount()) + " clips, " + processor.styleSourceText());
+    menu.addItem(1, "Load another library...");
+    menu.addItem(2, "Forget this library",
+                 processor.styleSource() != HarmoniaProcessor::StyleSource::BuiltIn);
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(styleButton),
+                       [this](int choice)
+                       {
+                           if (choice == 1)
+                               showStyleDialog();
+                           else if (choice == 2)
+                               processor.forgetInstalledStyleModel();
+                       });
+}
+
 void HarmoniaEditor::showStyleDialog()
 {
-    chooser = std::make_unique<juce::FileChooser>("Choose a style model learned by 'harmonia-cli scan'",
+    chooser = std::make_unique<juce::FileChooser>("Choose a style model built by 'harmonia-cli learn'",
                                                   processor.styleModelFile().existsAsFile()
                                                       ? processor.styleModelFile()
                                                       : juce::File::getSpecialLocation(juce::File::userHomeDirectory),

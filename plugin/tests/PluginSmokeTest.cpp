@@ -6,9 +6,11 @@
 
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
+#include "StyleStore.h"
 
 #include "harmonia/StyleModel.h"
 
+#include <cstdlib>
 #include <iostream>
 #include <map>
 
@@ -48,6 +50,18 @@ juce::File findExample()
 int main(int argc, char** argv)
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
+
+    // Point the installed-model folder at a scratch directory before anything
+    // constructs a processor: the test installs models, and it must never
+    // overwrite the one a real installation is using.
+    const auto styleDirectory = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                    .getChildFile("harmonia_smoke_style");
+    styleDirectory.deleteRecursively();
+   #if JUCE_WINDOWS
+    _putenv_s("HARMONIA_STYLE_DIR", styleDirectory.getFullPathName().toRawUTF8());
+   #else
+    setenv("HARMONIA_STYLE_DIR", styleDirectory.getFullPathName().toRawUTF8(), 1);
+   #endif
 
     const auto example = findExample();
     if (! example.existsAsFile())
@@ -234,6 +248,42 @@ int main(int argc, char** argv)
         processor.clearStyleModel();
         check(! processor.hasStyleModel(), "and the model can be unloaded");
         check(processor.loadStyleModelFile(modelFile), "and loaded again");
+
+        // Loading keeps it inside the plugin, so the next instance - in any
+        // project, on any day - starts with the same brain and no file path.
+        check(processor.styleSource() == HarmoniaProcessor::StyleSource::Installed,
+              "loading a model keeps it in the plugin");
+        check(styleStore::hasInstalled(), "and writes it to the plugin's own folder");
+
+        {
+            HarmoniaProcessor fresh;
+            check(fresh.hasStyleModel(), "a brand new instance already has a model");
+            check(fresh.styleClipCount() == processor.styleClipCount(), "the same one");
+            check(fresh.styleSource() == HarmoniaProcessor::StyleSource::Installed,
+                  "and says where it came from");
+
+            // A project that referenced a model by path must not rewrite the
+            // installed one when it opens.
+            juce::MemoryBlock sessionState;
+            fresh.getStateInformation(sessionState);
+            const auto xml = juce::AudioProcessor::getXmlFromBinary(sessionState.getData(),
+                                                                    static_cast<int>(sessionState.getSize()));
+            check(xml != nullptr && ! xml->hasAttribute("styleFile"),
+                  "and does not write the path into the project");
+        }
+
+        processor.forgetInstalledStyleModel();
+        check(! styleStore::hasInstalled(), "forgetting removes the installed copy");
+        std::cout << "  built in   : " << (styleStore::hasBuiltIn()
+                                               ? styleStore::builtInName()
+                                               : juce::String("nothing (-DHARMONIA_STYLE_MODEL not set)"))
+                  << "\n";
+        check(processor.styleSource() == (styleStore::hasBuiltIn()
+                                              ? HarmoniaProcessor::StyleSource::BuiltIn
+                                              : HarmoniaProcessor::StyleSource::None),
+              "and falls back to whatever is baked into the build");
+
+        check(processor.loadStyleModelFile(modelFile), "and it can be installed again");
     }
 
     // ---- State round trip ----------------------------------------------------

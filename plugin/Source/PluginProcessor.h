@@ -87,14 +87,33 @@ public:
     juce::String getProgressionText() const;
     bool hasWrittenProgression() const noexcept { return engine.hasWrittenProgression(); }
 
-    /** Load the style model that `harmonia-cli scan` learned from your own
-        collection, so the generators write with your habits. */
-    bool loadStyleModelFile(const juce::File& file);
+    /** Where the model currently in use came from. */
+    enum class StyleSource
+    {
+        None,
+        BuiltIn,   // baked into this build with -DHARMONIA_STYLE_MODEL
+        Installed, // living in the plugin's own folder, shared by every instance
+        Session    // a file loaded into this instance only
+    };
+
+    /** Load the style model that `harmonia-cli learn` built from your own
+        collection, so the generators write with your habits. With `install`
+        set it also becomes the plugin's own model, which every new instance
+        picks up without needing this path again. */
+    bool loadStyleModelFile(const juce::File& file, bool install = true);
+    /** Loads whatever the plugin carries: the installed model if there is one,
+        otherwise the one baked into the binary. */
+    void loadDefaultStyleModel();
+    /** Drops the installed copy and falls back to the built-in model. */
+    void forgetInstalledStyleModel();
     void clearStyleModel();
     bool hasStyleModel() const noexcept { return ! styleModel.empty(); }
     juce::String styleSummary() const;
     int styleClipCount() const noexcept { return styleModel.clipsLearned; }
     juce::File styleModelFile() const { return styleFile; }
+    StyleSource styleSource() const noexcept { return styleOrigin; }
+    /** One short line for the UI: where this brain came from. */
+    juce::String styleSourceText() const;
 
     /** Pin the key instead of letting the detector choose. */
     void setForcedKey(bool forced, int tonic, harmonia::ScaleType scale);
@@ -136,6 +155,7 @@ private:
     harmonia::Engine engine;
     harmonia::StyleModel styleModel;
     juce::File styleFile;
+    StyleSource styleOrigin = StyleSource::None;
     harmonia::NoteSequence generated;
     juce::String sourceName;
     juce::String lastError;

@@ -527,7 +527,7 @@ void bytesFromJson(const json::Value& value, std::array<uint8_t, 16>& out)
 
 } // namespace
 
-bool saveStyleModel(const std::string& path, const StyleModel& model, std::string& error)
+std::string styleModelToJson(const StyleModel& model)
 {
     auto root = json::Value::object();
     root.set("version", json::Value(1));
@@ -586,18 +586,25 @@ bool saveStyleModel(const std::string& path, const StyleModel& model, std::strin
     }
     root.set("progressions", std::move(progressions));
 
+    return root.toString(0);
+}
+
+bool saveStyleModel(const std::string& path, const StyleModel& model, std::string& error)
+{
     std::ofstream stream(path);
     if (! stream)
     {
         error = "Could not write '" + path + "'.";
         return false;
     }
-    stream << root.toString(0);
+
+    stream << styleModelToJson(model);
     if (! stream.good())
     {
         error = "Failed while writing '" + path + "'.";
         return false;
     }
+
     error.clear();
     return true;
 }
@@ -612,13 +619,21 @@ bool loadStyleModel(const std::string& path, StyleModel& model, std::string& err
     }
 
     const std::string text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    return parseStyleModel(text, model, error, path);
+}
+
+bool parseStyleModel(const std::string& text,
+                     StyleModel& model,
+                     std::string& error,
+                     const std::string& sourceName)
+{
     json::Value root;
     if (! json::parse(text, root, error))
         return false;
 
     if (! root.isObject() || ! root.has("clips"))
     {
-        error = "'" + path + "' is not a Harmonia style model.";
+        error = "'" + sourceName + "' is not a Harmonia style model.";
         return false;
     }
 
