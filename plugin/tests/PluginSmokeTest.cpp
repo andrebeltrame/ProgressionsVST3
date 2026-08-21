@@ -135,10 +135,64 @@ int main(int argc, char** argv)
     check(processor.getEngine().analysis().progression.size() >= 2, "reharmonisation keeps the grid");
     processor.resetProgression();
 
+    // ---- Written progressions --------------------------------------------------
+    check(processor.setProgressionText("Dm7 | G7 | Cmaj7 | Cmaj7"), "a typed progression is accepted");
+    check(processor.hasWrittenProgression(), "the engine knows the chords were written");
+    check(processor.getEngine().analysis().progression.size() == 4, "four chords in, four chords out");
+    check(! processor.getGeneratedSequence().empty(), "typing chords regenerates the part");
+    std::cout << "  typed      : " << processor.getEngine().analysis().progressionString() << "\n";
+
+    check(! processor.setProgressionText("Am | nonsense | C"), "a typo is rejected");
+    check(processor.getLastError().isNotEmpty(), "and explains itself");
+    check(processor.getEngine().analysis().progression.size() == 4, "the old chords survive a typo");
+
+    check(processor.applyPreset("deep-warm"), "a style preset applies");
+    check(processor.getEngine().analysis().progression.size() == 4, "the preset has four chords");
+    std::cout << "  preset     : " << processor.getEngine().analysis().progressionString()
+              << "   (" << processor.getEngine().analysis().romanNumeralString() << ")\n";
+    check(! processor.applyPreset("no-such-preset"), "an unknown preset is refused");
+
+    processor.setForcedKey(true, 5, harmonia::ScaleType::NaturalMinor); // F minor
+    check(processor.getEngine().analysis().key.tonic == 5, "the key can be pinned");
+    processor.setForcedKey(false, 5, harmonia::ScaleType::NaturalMinor);
+
+    processor.resetProgression();
+    check(! processor.hasWrittenProgression(), "reset goes back to the detected chords");
+    check(processor.getEngine().analysis().progressionString() == "Am | F | C | G",
+          "and the detected chords are the ones from the clip");
+
+    // ---- Chords with no clip at all ---------------------------------------------
+    {
+        HarmoniaProcessor blank;
+        blank.setPlayConfigDetails(0, 2, sampleRate, blockSize);
+        blank.prepareToPlay(sampleRate, blockSize);
+        check(blank.setProgressionText("Fm | Db | Ab | Eb"), "chords work with no clip loaded");
+        check(blank.getEngine().analysis().valid, "and produce a valid analysis");
+        check(! blank.getGeneratedSequence().empty(), "and a part");
+        std::cout << "  no clip    : " << blank.getEngine().analysis().key.name() << "  "
+                  << blank.getEngine().analysis().progressionString() << "\n";
+
+        blank.startPlayback();
+        int blankNoteOns = 0;
+        for (int block = 0; block < 100; ++block)
+        {
+            juce::MidiBuffer midi;
+            audio.clear();
+            blank.processBlock(audio, midi);
+            for (const auto metadata : midi)
+                if (metadata.getMessage().isNoteOn())
+                    ++blankNoteOns;
+        }
+        check(blankNoteOns > 0, "and play back");
+    }
+
     // ---- State round trip ----------------------------------------------------
     juce::MemoryBlock state;
     processor.getStateInformation(state);
     check(state.getSize() > 0, "state is written");
+
+    processor.applyPreset("melodic-lift");
+    processor.getStateInformation(state);
 
     HarmoniaProcessor restored;
     restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
@@ -146,6 +200,10 @@ int main(int argc, char** argv)
     check(restored.getSeed() == processor.getSeed(), "state restores the seed");
     check(restored.getGeneratedSequence().notes.size() == processor.getGeneratedSequence().notes.size(),
           "state restores the same idea");
+    check(restored.hasWrittenProgression(), "state restores the written progression");
+    check(restored.getEngine().analysis().progressionString()
+              == processor.getEngine().analysis().progressionString(),
+          "including the exact chords");
 
     // ---- Export ---------------------------------------------------------------
     const auto exported = juce::File::getSpecialLocation(juce::File::tempDirectory)
@@ -161,7 +219,7 @@ int main(int argc, char** argv)
 
         if (editor != nullptr)
         {
-            editor->setSize(1020, 720);
+            editor->setSize(1060, 760);
             juce::Image image(juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);
             {
                 juce::Graphics g(image);

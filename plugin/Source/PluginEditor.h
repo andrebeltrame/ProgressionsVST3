@@ -41,6 +41,9 @@ private:
     void refresh();
     void showLoadDialog();
     void showExportDialog();
+    void applyTypedProgression();
+    void applyKeyFromControls();
+    void refreshProgressionField();
 
     HarmoniaProcessor& processor;
     HarmoniaLookAndFeel lookAndFeel;
@@ -58,9 +61,14 @@ private:
 
     Knob densityKnob, complexityKnob, humanizeKnob, swingKnob, octaveKnob, voicesKnob;
 
-    juce::ComboBox lengthBox, arpBox, harmonyBox;
+    juce::ComboBox lengthBox, arpBox, harmonyBox, keyRootBox, keyModeBox;
     juce::Label lengthLabel { {}, "Length" }, arpLabel { {}, "Arp shape" },
-                harmonyLabel { {}, "Chord changes" };
+                harmonyLabel { {}, "Chord changes" },
+                keyRootLabel { {}, "Key" }, keyModeLabel { {}, "Mode" };
+
+    juce::ComboBox presetBox;
+    juce::TextEditor progressionField;
+    juce::TextButton applyProgressionButton { "Set" };
     juce::ToggleButton followToggle { "Follow groove" };
     juce::ToggleButton avoidToggle { "Stay clear" };
     juce::ToggleButton syncToggle { "Host sync" };

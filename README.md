@@ -1,15 +1,30 @@
 # Harmonia
 
-Plugin **VST 3** (e app standalone) que recebe um MIDI qualquer — baixo, pad,
-lead, arpejo — descobre a harmonia que está por trás dele e escreve ideias novas
-em cima: pads, melodias, contracantos, baixos e arpejos que seguem a mesma
-progressão.
+Plugin **VST 3** (e app standalone) para gerar ideias musicais a partir da sua
+própria harmonia. Três caminhos, todos levando ao mesmo lugar:
 
-A ideia central: você joga um **baixo** de 4 compassos na janela, o plugin
-responde `Am | F | C | G` e já entrega um pad com esse encadeamento, um lead que
-resolve nos acordes e um contracanto que não briga com a sua linha.
+1. **Solta um MIDI** — baixo, pad, lead, pluck — e o plugin descobre a
+   progressão que está por trás dele.
+2. **Digita a progressão** que você quer: `Am | F | C | G` ou `i VI III VII`.
+3. **Escolhe um preset** de House, Deep House, Melodic House ou Afro House.
+
+Com a harmonia definida, ele escreve pads, melodias, contracantos, baixos,
+arpejos e plucks em cima dela — e você arrasta o resultado direto para o DAW.
 
 ![Interface do Harmonia](docs/interface.png)
+
+---
+
+## Índice
+
+- [O que ele faz](#o-que-ele-faz)
+- [Escrevendo a progressão](#escrevendo-a-progressão)
+- [Sua biblioteca de MIDIs](#sua-biblioteca-de-midis)
+- [Instalando](#instalando)
+- [Rodando na sua máquina](#rodando-na-sua-máquina)
+- [Usando no DAW](#usando-no-daw)
+- [Linha de comando](#linha-de-comando)
+- [Estrutura do projeto](#estrutura-do-projeto)
 
 ---
 
@@ -20,20 +35,21 @@ resolve nos acordes e um contracanto que não briga com a sua linha.
 | | |
 |---|---|
 | Tonalidade | Perfis de Temperley com viés para menor natural, ancorados nas notas que abrem e fecham o trecho. Detecta também Dórico, Mixolídio, Lídio e menor harmônica. |
-| Progressão | Reconhecimento de acordes por Viterbi sobre 12 fundamentais × 10 qualidades, com bônus para acordes diatônicos, bônus para a nota mais grave do compasso e penalidade por troca de acorde. |
-| Papel do clipe | Baixo, pad/acordes, lead ou arpejo — e a detecção muda o resto: um baixo monofônico ganha peso extra na fundamental, um lead ganha uma grade harmônica mais larga. |
+| Progressão | Reconhecimento de acordes por Viterbi sobre 12 fundamentais × 10 qualidades, com bônus diatônico, bônus para a nota mais grave e penalidade por troca de acorde. |
+| Papel do clipe | Baixo, pad/acordes, lead ou arpejo — e isso muda o resto da análise: um baixo monofônico ganha peso na fundamental, um lead ganha uma grade harmônica mais larga. |
 | Ritmo | Grade de semicolcheias, densidade, sincopação, polifonia média e registro. É isso que faz a parte gerada respirar junto com a sua. |
 
 **Geração**
 
 | Parte | O que sai |
 |---|---|
-| **Pad** | Vozes sustentadas por acorde, com condução de vozes de verdade (busca por inversão que menos se movimenta). |
-| **Chords** | O mesmo material em bloco rítmico, seguindo o groove do clipe. |
-| **Melody** | Linha construída a partir de um motivo curto, repetido e variado em frases de 4 compassos, ancorada em notas do acorde nos tempos fortes e resolvendo no fim. |
+| **Pad** | Vozes sustentadas por acorde, com condução de vozes de verdade (busca pela inversão que menos se movimenta). |
+| **Chords** | O mesmo material em bloco rítmico, seguindo o groove. |
+| **Melody** | Linha construída sobre um motivo curto, repetido e variado em frases de 4 compassos, ancorada em notas do acorde nos tempos fortes. |
 | **Counter** | Igual à melodia, mas empurrada para movimento contrário ao do clipe e proibida de dobrar as suas notas. |
-| **Bass** | Fundamental com quintas, oitavas e aproximações cromáticas para o próximo acorde, na densidade que você pedir. |
+| **Bass** | Fundamental com quintas, oitavas e aproximações cromáticas para o próximo acorde. |
 | **Arp** | Notas do acorde em Up / Down / Up-Down / Down-Up / Converge / Random. |
+| **Pluck** | Notas curtas do acorde em cima do groove, com saltos e oitavas dobradas nos acentos — o pluck de house. |
 
 **Reharmonização** — um clique troca acordes por relativas, dominantes
 secundárias, substituições de trítono e empréstimo modal. Cada acorde também
@@ -42,7 +58,114 @@ descer.
 
 **Saída** — arraste o resultado direto para a timeline do DAW, salve como `.mid`,
 ou use a saída MIDI do plugin para tocar num instrumento seu. Tem um sintetizador
-de preview embutido para você ouvir sem ligar nada.
+de preview embutido para ouvir sem ligar nada.
+
+---
+
+## Escrevendo a progressão
+
+O campo de texto embaixo da régua de acordes aceita as duas notações, misturadas
+se você quiser:
+
+```
+Am | F | C | G                   cifras
+i - VI - III - VII               graus (na tonalidade atual)
+Cm7 Fm7 Bb7 Ebmaj7               espaço também separa
+i9 | IV9                         graus com extensão
+F#m7b5 | B7 | Em                 acidentes e qualidades completas
+```
+
+Reconhece `m`, `maj7`, `m7`, `7`, `9`, `maj9`, `m9`, `6`, `m6`, `dim`, `dim7`,
+`m7b5`, `aug`, `sus2`, `sus4`, `7sus4`, `add9`, `5` e inversões com `/`
+(`Cmaj7/G`). Nos graus, **maiúscula é acorde maior e minúscula é menor** — `V`
+em Lá menor é Mi maior, `v` é Mi menor.
+
+Os graus são contados **na escala da própria tonalidade**: em Lá menor,
+`i VI III VII` é `Am F C G`. É a notação que produtor usa, não a do
+conservatório (que escreveria `i bVI bIII bVII`).
+
+**Com um clipe carregado**, escrever uma progressão troca só os acordes: andamento,
+compasso, tamanho e groove continuam sendo os do clipe. Ou seja, dá para pegar
+um baixo que você gosta e experimentar outra harmonia por cima dele.
+
+**Sem clipe nenhum**, a progressão vira o material inteiro — um compasso por
+acorde, no andamento do DAW.
+
+O combo **Style presets** traz 20 progressões prontas, escritas em graus e por
+isso transportáveis para qualquer tom. O preset mantém a tônica em que você já
+está e só troca o modo (não adianta aplicar `vi IV I V` numa tonalidade menor).
+
+```
+$ harmonia-cli presets --style melodic
+
+Melodic House
+  melodic-lift          Melodic lift          i | III | VII | VI
+                        Minor - The Anjuna-style four - lands well under long arpeggios.
+  melodic-drive         Driving minor         i | VII | VI | VII
+                        Minor - Keeps moving without resolving; good under a rolling bass.
+  ...
+```
+
+O combo **Key** fixa a tonalidade em vez de deixar o detector escolher — é ela
+que decide como os graus que você digitar são lidos.
+
+---
+
+## Sua biblioteca de MIDIs
+
+O `scan` percorre uma pasta inteira, analisa cada `.mid` e grava um índice JSON
+com tonalidade, andamento, progressão, papel (bass/lead/pad/pluck/arp) e o perfil
+rítmico de cada clipe. As pastas viram etiquetas, então a organização que você já
+tem no HD passa a ser pesquisável.
+
+```bash
+harmonia-cli scan "/Volumes/HD Externo/MIDI" --index ~/harmonia-library.json
+```
+
+```
+Indexed 2841 clips into /Users/você/harmonia-library.json
+  Percussion     : 412
+  By role        : arp=233 bass=486 chords=390 drums=412 lead=507 pad=381 pluck=432
+  Top folders    : deep house(612) melodic house(548) bass(486) leads(507) ...
+```
+
+Depois:
+
+```bash
+# tudo que é baixo de deep house em Fá menor entre 118 e 124 BPM
+harmonia-cli library --index ~/harmonia-library.json \
+    --tag "deep house" --role bass --key "F minor" --bpm 118-124
+
+# que progressões aparecem na minha coleção?
+harmonia-cli library --index ~/harmonia-library.json --contains "VI | VII"
+
+# um mapa das pastas
+harmonia-cli library --index ~/harmonia-library.json --tags
+```
+
+E o principal: **usar um clipe da biblioteca como doador de groove**. A harmonia
+vem da progressão, o ritmo vem de um clipe seu:
+
+```bash
+harmonia-cli --preset deep-rhodes --key "F minor" \
+    --index ~/harmonia-library.json \
+    --groove "dh_bass_01" \
+    --part pluck,pad --out ideias/
+```
+
+O `--groove` aceita tanto um caminho `.mid` quanto um pedaço de nome/pasta que é
+procurado no índice.
+
+### Onde guardar os MIDIs
+
+Recomendo **deixar os arquivos no HD e versionar só o índice**: ele é um JSON de
+alguns MB que descreve a coleção inteira e não carrega áudio nem MIDI de
+terceiros junto. A pasta `library/` já está no `.gitignore` caso você prefira
+copiar uma seleção para dentro do projeto.
+
+Uma ressalva prática: MIDI pack comprado quase sempre vem com licença que proíbe
+redistribuição. Os seus MIDIs, feitos por você, são seus — esses pode subir sem
+problema. Os de pack, melhor manter fora de um repositório público.
 
 ---
 
@@ -56,9 +179,7 @@ sudo apt install build-essential cmake ninja-build \
     libxcomposite-dev libasound2-dev libfreetype-dev libfontconfig1-dev \
     libgl1-mesa-dev
 
-git clone <este-repo> harmonia && cd harmonia
 git clone --depth 1 --branch 8.0.6 https://github.com/juce-framework/JUCE.git external/JUCE
-
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DHARMONIA_BUILD_PLUGIN=ON
 cmake --build build
 ```
@@ -88,74 +209,95 @@ cmake --build build --config Release
 
 Copie o `.vst3` para `C:\Program Files\Common Files\VST3\`.
 
-> Passe `-DHARMONIA_INSTALL_PLUGIN=ON` e o CMake já copia para a pasta de
+> Passe `-DHARMONIA_INSTALL_PLUGIN=ON` e o CMake copia sozinho para a pasta de
 > plugins do sistema no fim do build. Se você não clonar o JUCE à mão, o CMake
-> baixa sozinho via `FetchContent` (só demora mais).
+> baixa via `FetchContent` (só demora mais).
+
+---
+
+## Rodando na sua máquina
+
+O projeto está no GitHub; o container onde ele foi escrito é descartável.
+Para trazer tudo para o seu computador:
+
+```bash
+git clone https://github.com/andrebeltrame/claudeapp.git harmonia
+cd harmonia
+git checkout claude/vst3-music-idea-generator-vqgacc
+```
+
+Daí siga a seção [Instalando](#instalando). Só o motor + CLI, sem o plugin, é
+questão de segundos e não precisa de nenhuma dependência:
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+./build/tests/harmonia_tests
+```
 
 ---
 
 ## Usando no DAW
 
 1. Abra o Harmonia como **instrumento** numa pista.
-2. Arraste um `.mid` para a janela (ou **Load MIDI…**). Tem exemplos em
-   `resources/examples/`.
-3. Olhe o painel de análise e a régua de acordes — é o que o plugin entendeu.
-4. Escolha a parte (**Pad**, **Melody**, …) e mexa nos botões.
+2. Arraste um `.mid` para a janela, ou digite uma progressão, ou escolha um preset.
+3. Confira o painel de análise e a régua de acordes.
+4. Escolha a parte (**Pad**, **Melody**, **Pluck**, …) e mexa nos botões.
 5. **New idea** sorteia outra versão com as mesmas configurações.
 6. **Drag MIDI to your DAW** arrasta o resultado para a timeline.
 
-Alguns detalhes que valem saber:
+Detalhes que valem saber:
 
 - **Follow groove** faz a parte nova herdar o padrão rítmico do clipe. Desligue
-  se o clipe for um pad de semibreves e você quiser uma melodia mexida.
+  se o clipe for um pad de semibreves e você quiser algo mexido.
 - **Stay clear** mantém a parte nova fora do registro que o clipe já ocupa —
   é o que impede um pad de subir em cima do lead.
 - **Host sync** toca junto com o transporte do DAW; desligado, o botão **Play**
   roda em loop no andamento do próprio clipe.
 - **Length** repete a progressão até completar 1, 2, 4, 8 ou 16 compassos.
-- **Chord changes** força a grade harmônica. Em *Auto* o plugin decide sozinho;
-  se ele achar um acorde só num lead que você sabe que tem quatro, force
-  *1 per bar*. Mudar isso refaz a análise e descarta acordes editados à mão.
+- **Chord changes** força a grade harmônica. Em *Auto* o plugin decide; se ele
+  achar um acorde só num lead que você sabe que tem quatro, force *1 per bar*.
 - A **semente** aparece no painel: mesma semente + mesmos controles = exatamente
-  a mesma ideia, sempre. Ela é salva no projeto.
+  a mesma ideia, sempre. Ela é salva no projeto, junto com o clipe e a progressão.
 
 ---
 
 ## Linha de comando
 
-O motor também roda sem DAW nenhum, útil para gerar material em lote:
-
 ```bash
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-
-./build/cli/harmonia-cli resources/examples/bass_loop.mid --info
-./build/cli/harmonia-cli meu_baixo.mid --part pad,melody,counter --variations 3 --out ideias/
+harmonia-cli <arquivo.mid> [opções]      analisa um clipe e escreve partes
+harmonia-cli --progression "Am F C G"    escreve sobre acordes digitados
+harmonia-cli --preset deep-warm          escreve sobre um preset
+harmonia-cli presets [--style X]         lista as progressões prontas
+harmonia-cli scan <pasta> [opções]       indexa uma pasta de MIDIs
+harmonia-cli library [opções]            pesquisa o índice
 ```
 
 ```
+$ harmonia-cli resources/examples/bass_loop.mid --info
 Analysed resources/examples/bass_loop.mid
   Key            : A Minor  (confidence 0.53)
   Tempo          : 96.0 BPM
   Detected role  : Bass
   Progression    : Am | F | C | G
-  Roman numerals : i | bVI | bIII | bVII
+  Roman numerals : i | VI | III | VII
 ```
 
-Opções principais: `--part`, `--variations`, `--bars`, `--density`,
-`--complexity`, `--humanize`, `--swing`, `--octave`, `--voices`, `--seed`,
-`--key`, `--reharm`, `--chords-per-bar`, `--no-follow`, `--no-avoid`, `--info`.
-Rode `harmonia-cli --help` para a lista completa.
+Principais opções de geração: `--part`, `--progression`, `--preset`, `--groove`,
+`--variations`, `--bars`, `--bpm`, `--density`, `--complexity`, `--humanize`,
+`--swing`, `--octave`, `--voices`, `--seed`, `--key`, `--reharm`,
+`--chords-per-bar`, `--no-follow`, `--no-avoid`, `--info`.
+`harmonia-cli --help` tem a lista completa.
 
 ---
 
 ## Estrutura do projeto
 
 ```
-core/      motor puro em C++17, sem dependência nenhuma (nem JUCE)
-           leitor/escritor de SMF, teoria musical, análise, geradores
+core/      motor em C++17, sem dependência nenhuma (nem JUCE)
+           MIDI, teoria, análise, geradores, progressões, presets, biblioteca
 cli/       front end de linha de comando
-tests/     37 testes unitários do motor
+tests/     54 testes unitários do motor
 plugin/    invólucro JUCE: processador, editor, componentes de UI
            tests/ traz um smoke test headless do plugin
 resources/ clipes MIDI de exemplo
@@ -175,7 +317,8 @@ cmake --build build && ./build/tests/harmonia_tests
 
 Com `-DHARMONIA_BUILD_PLUGIN=ON` o alvo `harmonia_plugin_tests` também é
 construído: ele instancia o plugin, roda 400 blocos de áudio, confere que todo
-note-on tem note-off, faz round-trip do estado e renderiza a interface em PNG.
+note-on tem note-off, testa progressões digitadas e presets, faz round-trip do
+estado e renderiza a interface em PNG.
 
 ## Licença
 

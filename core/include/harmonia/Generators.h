@@ -18,7 +18,8 @@ enum class PartType
     Melody,        // singable lead line
     CounterMelody, // second line designed to sit against the source
     Bass,          // root-driven low line
-    Arp            // broken chord pattern
+    Arp,           // broken chord pattern
+    Pluck          // short chord tones on the groove, house-style
 };
 
 const char* toString(PartType part);
@@ -48,6 +49,10 @@ struct GenerateOptions
 
     /** Borrow the onset grid of the source clip instead of using the part default. */
     bool followSourceRhythm = true;
+    /** Take the groove from another clip entirely - typically one picked out of
+        your MIDI library. Overrides the source clip's groove when set. */
+    bool useGrooveDonor = false;
+    RhythmProfile grooveDonor {};
     /** Keep the generated line out of the source's way (register + unisons). */
     bool avoidSourceCollisions = true;
     /** Resolve the final note/chord to something stable. */

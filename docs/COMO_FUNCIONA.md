@@ -6,20 +6,24 @@ nenhuma dependência externa — dá para compilar e testar em segundos.
 ## O caminho de um clipe
 
 ```
-arquivo .mid
-   │
-   ├─ midi::readFromMemory       core/src/MidiFile.cpp
-   │     junta todas as tracks numa NoteSequence e reescala para 960 PPQ
-   │
-   ├─ analyze()                  core/src/Analysis.cpp
-   │     ├─ pitchClassHistogram  peso = duração × velocidade
-   │     ├─ detectKey            perfis de Temperley + âncora nas bordas
-   │     ├─ buildRhythmProfile   grade de 16 fatias, densidade, polifonia
-   │     ├─ detectRole           Bass / Chords / Lead / Arp
-   │     └─ Viterbi              acorde por quadro, depois junta em segmentos
-   │
-   └─ generate()                 core/src/Generators.cpp
-         escreve a parte pedida em cima de Analysis::progression
+arquivo .mid                          progressão digitada / preset
+   │                                          │
+   ├─ midi::readFromMemory                    ├─ parseProgression()
+   │     core/src/MidiFile.cpp                │     core/src/Progression.cpp
+   │     junta as tracks numa                 │     cifras e graus, misturados
+   │     NoteSequence a 960 PPQ               │
+   │                                          │
+   ├─ analyze()  core/src/Analysis.cpp        ├─ com clipe:  applyProgressionTo()
+   │     ├─ pitchClassHistogram               │      troca só os acordes
+   │     ├─ detectKey                         │
+   │     ├─ buildRhythmProfile                └─ sem clipe: analysisFromProgression()
+   │     ├─ detectRole                               monta uma Analysis do zero
+   │     └─ Viterbi -> progressão                          │
+   │                     │                                 │
+   └─────────────────────┴─────────────┬───────────────────┘
+                                       │
+                                  generate()   core/src/Generators.cpp
+                                  escreve a parte sobre Analysis::progression
 ```
 
 ## Detecção de tonalidade
@@ -66,8 +70,53 @@ barra de compasso, maior no meio dele, e 1,7× maior quando a fonte é uma
 melodia. Isso é o que faz um baixo de semínimas em `C A F G` sair como quatro
 acordes de um compasso, e não dezesseis picotados.
 
+### Peso da evidência
+
+Um detalhe que muda tudo em cima de linhas de baixo: **quadro com uma nota só
+vale menos**. Uma classe de altura sozinha serve igualmente bem para dezenas de
+acordes, então a emissão inteira é multiplicada por
+
+```
+evidência = 0,35 + 0,35 × (classes de altura distintas − 1)   (limitado a 1,0)
+```
+
+Uma nota → 0,35. Duas → 0,70. Três ou mais → 1,0. Sem isso, a nota cromática de
+aproximação que um baixo toca no último tempo do compasso ganha do acorde
+inteiro e vira um acorde próprio. Com isso, `C C C E | F F F A | Bb Bb Bb D`
+sai como `C | F | Bb` em vez de seis acordes picotados.
+
+O bônus da nota grave também é escalado pela força métrica do quadro (1,0 na
+cabeça do compasso, 0,7 no meio, 0,45 no resto): baixo em tempo forte é
+fundamental, a mesma nota no contratempo é passagem.
+
 No fim, quadros iguais viram `ChordSegment`, e um segmento curto espremido
 entre dois acordes idênticos é absorvido (nota de passagem).
+
+## Graus e progressões escritas
+
+`Chord::romanNumeral()` conta os graus **na escala da tonalidade**, não na escala
+maior. Em Lá menor, Fá é `VI`, não `bVI`. Acordes de fora da escala ganham `b` ou
+`#`. Acordes sem terça (sus, power) herdam a caixa do acorde diatônico daquele
+grau, para que `isus2` volte a ser `isus2` depois de escrito e lido de novo.
+
+`parseProgression()` faz o caminho inverso e aceita os dois mundos no mesmo
+texto. Cada token é tentado primeiro como cifra (`Am7`, `F#m7b5`, `Cmaj7/G`) e
+depois como grau (`i`, `bVII7`, `V7`). Não há ambiguidade real entre os dois:
+nenhum nome de nota começa com `i` ou `v`, e `bVII` falha como cifra (`B` seguido
+de `VII`, que não é qualidade nenhuma) antes de ser tentado como grau.
+
+Duas formas de aplicar o resultado:
+
+- **`applyProgressionTo(analysis, chords)`** — com um clipe carregado. Mantém
+  andamento, compasso, tamanho, groove e papel detectado; divide o comprimento
+  igualmente entre os acordes e encaixa as trocas na grade de tempos.
+- **`analysisFromProgression(...)`** — sem clipe. Monta uma `Analysis` completa
+  com um compasso por acorde e um `RhythmProfile` vazio, o que faz os geradores
+  caírem no próprio feel em vez de tentar copiar um groove que não existe.
+
+Os presets (`core/src/Presets.cpp`) são guardados em graus justamente para poder
+ser transportados. Aplicar um preset mantém a tônica atual e adota o modo do
+preset — `vi IV I V` não significa nada numa tonalidade menor.
 
 ## Condução de vozes
 
@@ -110,6 +159,27 @@ ajuste da cadência final, que é onde a checagem ingênua escapava.
 Tudo é determinístico: mesma semente (`Rng`, um xorshift de 32 bits) e mesmos
 parâmetros produzem exatamente o mesmo MIDI. É por isso que basta salvar a
 semente no estado do plugin em vez do resultado inteiro.
+
+## A biblioteca de MIDIs
+
+`core/src/Library.cpp` percorre uma árvore de pastas com `std::filesystem`,
+analisa cada `.mid` e monta um `LibraryIndex`. Cada entrada guarda tonalidade,
+andamento, compassos, progressão, papel detectado, papel deduzido do nome da
+pasta (`bass`, `pluck`, `arp`, `drums`, …), as pastas como etiquetas, e o
+`RhythmProfile` completo — inclusive a grade de 16 fatias.
+
+Guardar a grade é o que permite o **doador de groove**: `GenerateOptions` aceita
+um `RhythmProfile` vindo de outro clipe, e os geradores escrevem contra ele em
+vez do groove da fonte. Como o pedido é explícito, a influência do doador sobe
+para 0,9 (contra 0,6 do "seguir a fonte"), então o resultado realmente soa como
+o clipe doado.
+
+Percussão é detectada por canal 10 e pelo nome da pasta, e fica marcada para
+poder ser filtrada — não tem harmonia para contribuir.
+
+O índice é JSON, escrito e lido por `core/src/Json.cpp` (um parser mínimo,
+~300 linhas, para não trazer dependência). Dá para abrir no editor, versionar e
+processar com `jq`.
 
 ## A camada do plugin
 

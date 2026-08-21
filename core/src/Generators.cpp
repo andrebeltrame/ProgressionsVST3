@@ -19,6 +19,7 @@ const char* toString(PartType part)
         case PartType::CounterMelody: return "Counter Melody";
         case PartType::Bass:          return "Bass";
         case PartType::Arp:           return "Arp";
+        case PartType::Pluck:         return "Pluck";
     }
     return "Pad";
 }
@@ -36,6 +37,7 @@ bool partTypeFromString(const std::string& text, PartType& out)
     if (lower == "counter" || lower == "countermelody")    { out = PartType::CounterMelody; return true; }
     if (lower == "bass")                                   { out = PartType::Bass; return true; }
     if (lower == "arp" || lower == "arpeggio")             { out = PartType::Arp; return true; }
+    if (lower == "pluck" || lower == "pluk" || lower == "stab") { out = PartType::Pluck; return true; }
     return false;
 }
 
@@ -49,6 +51,7 @@ void defaultRange(PartType part, int& lowPitch, int& highPitch)
         case PartType::CounterMelody: lowPitch = 59; highPitch = 81; break;
         case PartType::Bass:          lowPitch = 28; highPitch = 55; break;
         case PartType::Arp:           lowPitch = 60; highPitch = 91; break;
+        case PartType::Pluck:         lowPitch = 60; highPitch = 91; break;
     }
 }
 
@@ -77,6 +80,8 @@ struct Context
     int bars = 1;
 
     std::vector<ChordSegment> progression;
+    /** The groove the generators write against: the source clip's, or a donor. */
+    RhythmProfile rhythm;
     Key key;
     int lowPitch = 48;
     int highPitch = 84;
@@ -133,7 +138,7 @@ float slotWeight(int slot)
 
 std::vector<Onset> buildOnsets(Context& ctx, float density, float legato, bool useSourceGrid)
 {
-    const auto& rhythm = ctx.analysis->rhythm;
+    const auto& rhythm = ctx.rhythm;
     const int slotsPerBar = 16;
     const int64_t slotTicks = std::max<int64_t>(1, ctx.barTicks / slotsPerBar);
     const float multiplier = 0.15f + 0.85f * std::clamp(density, 0.0f, 1.0f);
@@ -147,7 +152,10 @@ std::vector<Onset> buildOnsets(Context& ctx, float density, float legato, bool u
         for (float value : rhythm.grid)
             if (value > 0.15f)
                 ++activeSlots;
-        sourceInfluence = activeSlots >= 4 ? 0.6f : (activeSlots >= 2 ? 0.3f : 0.0f);
+        // Asking for a donor groove is explicit, so it counts for more than
+        // simply following whatever clip happens to be loaded.
+        const float ceiling = ctx.options->useGrooveDonor ? 0.9f : 0.6f;
+        sourceInfluence = activeSlots >= 4 ? ceiling : (activeSlots >= 2 ? ceiling * 0.5f : 0.0f);
     }
 
     std::vector<int64_t> ticks;
@@ -260,6 +268,7 @@ void adjustRangeForSource(Context& ctx, PartType part)
             break;
 
         case PartType::Arp:
+        case PartType::Pluck:
             if (role == SourceRole::Bass)
                 ctx.lowPitch = std::max(ctx.lowPitch, rhythm.highestPitch + 4);
             break;
@@ -337,7 +346,8 @@ NoteSequence writeChords(Context& ctx)
     NoteSequence out;
     const auto& options = *ctx.options;
 
-    auto onsets = buildOnsets(ctx, 0.25f + 0.5f * options.density, 0.62f, options.followSourceRhythm);
+    auto onsets = buildOnsets(ctx, 0.25f + 0.5f * options.density, 0.62f,
+                              options.followSourceRhythm || options.useGrooveDonor);
     applySwing(ctx, onsets);
 
     std::vector<int> previousVoicing;
@@ -511,6 +521,67 @@ NoteSequence writeArp(Context& ctx)
     return out;
 }
 
+/** Short chord tones riding the groove - the house pluck / stab. */
+NoteSequence writePluck(Context& ctx)
+{
+    NoteSequence out;
+    const auto& options = *ctx.options;
+
+    auto onsets = buildOnsets(ctx, 0.35f + 0.55f * options.density, 0.4f,
+                              options.followSourceRhythm || options.useGrooveDonor);
+    applySwing(ctx, onsets);
+
+    const int64_t maxLength = std::max<int64_t>(ctx.slotTicks / 2, ctx.slotTicks * 3 / 2);
+    int previous = (ctx.lowPitch + ctx.highPitch) / 2;
+
+    for (const auto& onset : onsets)
+    {
+        const auto& segment = ctx.chordAt(onset.tick);
+        const Chord chord = extendChord(segment.chord, ctx.key, options.complexity);
+
+        std::vector<int> tones;
+        for (int pitch = ctx.lowPitch; pitch <= ctx.highPitch; ++pitch)
+            if (chord.containsPitchClass(pitch))
+                tones.push_back(pitch);
+        if (tones.empty())
+            continue;
+
+        // Plucks jump around far more than a melody would, but not at random:
+        // the closest tone is still the most likely pick.
+        std::vector<float> weights;
+        weights.reserve(tones.size());
+        for (int pitch : tones)
+        {
+            const float distance = static_cast<float>(std::abs(pitch - previous));
+            weights.push_back(1.0f / (1.0f + distance * (1.4f - options.complexity)));
+        }
+        const int index = ctx.rng.weighted(weights);
+        const int pitch = tones[static_cast<size_t>(std::max(0, index))];
+        previous = pitch;
+
+        Note note;
+        note.startTick = onset.tick;
+        note.lengthTick = std::min(maxLength, std::max<int64_t>(ctx.slotTicks / 3, onset.length));
+        note.pitch = pitch;
+        note.velocity = std::clamp(static_cast<int>(static_cast<float>(options.baseVelocity)
+                                                    * (0.7f + 0.3f * onset.accent)),
+                                   1, 127);
+        note.channel = options.channel;
+        out.notes.push_back(note);
+
+        // A doubled octave on the accents gives the part some weight.
+        if (options.density > 0.55f && onset.accent > 0.7f && pitch + 12 <= ctx.highPitch
+            && ctx.rng.chance(0.45f))
+        {
+            Note doubled = note;
+            doubled.pitch = pitch + 12;
+            doubled.velocity = std::max(1, note.velocity - 12);
+            out.notes.push_back(doubled);
+        }
+    }
+    return out;
+}
+
 /** Shared engine behind Melody and CounterMelody. */
 NoteSequence writeMelodicLine(Context& ctx, bool counterMelody)
 {
@@ -518,7 +589,9 @@ NoteSequence writeMelodicLine(Context& ctx, bool counterMelody)
     const auto& options = *ctx.options;
 
     const float density = std::clamp(options.density * (counterMelody ? 0.85f : 1.0f), 0.05f, 1.0f);
-    auto onsets = buildOnsets(ctx, density, 0.86f, options.followSourceRhythm && ! counterMelody);
+    auto onsets = buildOnsets(ctx, density, 0.86f,
+                              options.useGrooveDonor
+                                  || (options.followSourceRhythm && ! counterMelody));
     applySwing(ctx, onsets);
     if (onsets.empty())
         return out;
@@ -711,6 +784,7 @@ NoteSequence generate(const Analysis& analysis, const NoteSequence& source, cons
     ctx.beatTicks = std::max<int64_t>(1, analysis.ticksPerBeat());
     ctx.slotTicks = std::max<int64_t>(1, ctx.barTicks / 16);
     ctx.key = analysis.key;
+    ctx.rhythm = options.useGrooveDonor ? options.grooveDonor : analysis.rhythm;
 
     ctx.bars = options.bars > 0 ? options.bars : std::max(1, analysis.bars);
     ctx.totalTicks = static_cast<int64_t>(ctx.bars) * ctx.barTicks;
@@ -749,6 +823,7 @@ NoteSequence generate(const Analysis& analysis, const NoteSequence& source, cons
         case PartType::Chords:        out.notes = writeChords(ctx).notes; break;
         case PartType::Bass:          out.notes = writeBass(ctx).notes; break;
         case PartType::Arp:           out.notes = writeArp(ctx).notes; break;
+        case PartType::Pluck:         out.notes = writePluck(ctx).notes; break;
         case PartType::Melody:        out.notes = writeMelodicLine(ctx, false).notes; break;
         case PartType::CounterMelody: out.notes = writeMelodicLine(ctx, true).notes; break;
     }

@@ -21,6 +21,7 @@ enum class SourceRole
 };
 
 const char* toString(SourceRole role);
+bool sourceRoleFromString(const std::string& text, SourceRole& out);
 
 struct ChordSegment
 {
@@ -70,8 +71,9 @@ struct Analysis
     int64_t ticksPerBeat() const noexcept { return ppq * 4 / (timeSignature.denominator > 0 ? timeSignature.denominator : 4); }
 
     const ChordSegment* chordAt(int64_t tick) const;
-    /** "Dm7 | G7 | Cmaj7 | Cmaj7" */
-    std::string progressionString(bool preferFlats = false) const;
+    /** "Dm7 | G7 | Cmaj7 | Cmaj7", spelled the way the key is written. */
+    std::string progressionString() const;
+    std::string progressionString(bool useFlats) const;
     /** "ii7 | V7 | Imaj7 | Imaj7" */
     std::string romanNumeralString() const;
 };

@@ -77,6 +77,19 @@ public:
     void resetProgression();
     void nudgeChord(int index, int direction);
 
+    /** Types a progression in over whatever is loaded: "Am | F | C | G" or
+        "i VI III VII". Returns false and sets the error text if it will not parse. */
+    bool setProgressionText(const juce::String& text);
+    bool applyPreset(const juce::String& presetId);
+    juce::String getProgressionText() const;
+    bool hasWrittenProgression() const noexcept { return engine.hasWrittenProgression(); }
+
+    /** Pin the key instead of letting the detector choose. */
+    void setForcedKey(bool forced, int tonic, harmonia::ScaleType scale);
+    bool isKeyForced() const noexcept { return keyForced; }
+    int forcedTonic() const noexcept { return keyTonic; }
+    harmonia::ScaleType forcedScale() const noexcept { return keyScale; }
+
     const harmonia::Engine& getEngine() const noexcept { return engine; }
     const harmonia::NoteSequence& getGeneratedSequence() const noexcept { return generated; }
     juce::String getSourceName() const { return sourceName; }
@@ -115,6 +128,10 @@ private:
     juce::MemoryBlock sourceMidiData;
     juce::uint32 seed = 1;
 
+    bool keyForced = false;
+    int keyTonic = 9;
+    harmonia::ScaleType keyScale = harmonia::ScaleType::NaturalMinor;
+
     juce::SpinLock partLock;
     RenderedPart::Ptr activePart;
 
@@ -127,6 +144,7 @@ private:
     std::atomic<bool> internalPlaying { false };
     std::atomic<double> reportedPosition { 0.0 };
     std::atomic<double> clipBpm { 120.0 };
+    std::atomic<double> hostBpm { 122.0 };
     bool wasPlaying = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(HarmoniaProcessor)

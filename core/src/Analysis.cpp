@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cctype>
 #include <numeric>
 
 namespace harmonia
@@ -127,6 +128,22 @@ const char* toString(SourceRole role)
     }
 }
 
+bool sourceRoleFromString(const std::string& text, SourceRole& out)
+{
+    std::string lowered;
+    for (char c : text)
+        lowered += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    if (lowered == "bass")                                        { out = SourceRole::Bass; return true; }
+    if (lowered == "chords" || lowered == "chords / pad"
+        || lowered == "pad" || lowered == "keys")                 { out = SourceRole::Chords; return true; }
+    if (lowered == "lead" || lowered == "melody"
+        || lowered == "lead / melody")                            { out = SourceRole::Lead; return true; }
+    if (lowered == "arp")                                         { out = SourceRole::Arp; return true; }
+    if (lowered == "unknown")                                     { out = SourceRole::Unknown; return true; }
+    return false;
+}
+
 std::vector<int> RhythmProfile::strongestSlots(int count) const
 {
     std::vector<int> indices(16);
@@ -146,14 +163,19 @@ const ChordSegment* Analysis::chordAt(int64_t tick) const
     return progression.empty() ? nullptr : &progression.back();
 }
 
-std::string Analysis::progressionString(bool preferFlats) const
+std::string Analysis::progressionString() const
+{
+    return progressionString(key.preferFlats());
+}
+
+std::string Analysis::progressionString(bool useFlats) const
 {
     std::string out;
     for (size_t i = 0; i < progression.size(); ++i)
     {
         if (i > 0)
             out += " | ";
-        out += progression[i].chord.name(preferFlats);
+        out += progression[i].chord.name(useFlats);
     }
     return out;
 }
@@ -426,6 +448,18 @@ Analysis analyze(const NoteSequence& sequence, const AnalysisOptions& options)
         return result;
     }
 
+    // How strong each frame's position in the bar is. A bass note on the
+    // downbeat is a root; the same note on the last eighth is a passing tone.
+    const auto metricWeight = [framesPerBar](int frame)
+    {
+        const int position = framesPerBar > 0 ? frame % framesPerBar : 0;
+        if (position == 0)
+            return 1.0f;
+        if (framesPerBar >= 2 && position == framesPerBar / 2)
+            return 0.7f;
+        return 0.45f;
+    };
+
     std::vector<std::array<float, 12>> frames(static_cast<size_t>(frameCount));
     std::vector<int> frameBass(static_cast<size_t>(frameCount), -1);
     std::vector<int> frameLowestPitch(static_cast<size_t>(frameCount), 128);
@@ -455,8 +489,21 @@ Analysis analyze(const NoteSequence& sequence, const AnalysisOptions& options)
         }
     }
 
-    for (auto& frame : frames)
+    // How much a frame is worth as evidence. One pitch class fits dozens of
+    // chords equally well, so a single bass note must not be allowed to pull the
+    // progression off course the way a full voicing can.
+    std::vector<float> frameEvidence(static_cast<size_t>(frameCount), 1.0f);
+
+    for (int f = 0; f < frameCount; ++f)
     {
+        auto& frame = frames[static_cast<size_t>(f)];
+        int distinct = 0;
+        for (float value : frame)
+            if (value > 0.0f)
+                ++distinct;
+        frameEvidence[static_cast<size_t>(f)] = std::clamp(0.35f + 0.35f * static_cast<float>(distinct - 1),
+                                                           0.35f, 1.0f);
+
         const float sum = std::accumulate(frame.begin(), frame.end(), 0.0f);
         if (sum > 0.0f)
             for (auto& v : frame)
@@ -470,7 +517,11 @@ Analysis analyze(const NoteSequence& sequence, const AnalysisOptions& options)
     const float bassBonus = result.role == SourceRole::Bass ? 0.45f
                           : (melodicSource || result.role == SourceRole::Arp) ? 0.12f
                                                                               : 0.25f;
-    const float changePenaltyScale = melodicSource ? 1.7f : 1.0f;
+    // A walking bass with passing notes still means one chord, so it gets a
+    // stiffer penalty too - just not as stiff as a free melody.
+    const float changePenaltyScale = melodicSource ? 1.7f
+                                   : result.role == SourceRole::Bass ? 1.3f
+                                                                     : 1.0f;
 
     std::vector<float> previousScores(static_cast<size_t>(stateCount), 0.0f);
     std::vector<float> currentScores(static_cast<size_t>(stateCount), 0.0f);
@@ -514,12 +565,13 @@ Analysis analyze(const NoteSequence& sequence, const AnalysisOptions& options)
                 const int bass = frameBass[static_cast<size_t>(f)];
                 if (bass >= 0)
                 {
+                    const float strength = metricWeight(f);
                     if (bass == candidate.chord.root)
-                        score += bassBonus;
+                        score += bassBonus * strength;
                     else if (candidate.chord.containsPitchClass(bass))
-                        score -= 0.08f;
+                        score -= 0.08f * strength;
                     else
-                        score -= 0.22f;
+                        score -= 0.22f * strength;
                 }
 
                 score -= candidate.sizeCost;
@@ -527,7 +579,7 @@ Analysis analyze(const NoteSequence& sequence, const AnalysisOptions& options)
                     score += options.diatonicBias;
             }
 
-            emissions[static_cast<size_t>(f)][static_cast<size_t>(s)] = score;
+            emissions[static_cast<size_t>(f)][static_cast<size_t>(s)] = score * frameEvidence[static_cast<size_t>(f)];
         }
     }
 

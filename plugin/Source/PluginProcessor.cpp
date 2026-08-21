@@ -8,7 +8,7 @@ using namespace harmonia;
 namespace
 {
 
-const juce::StringArray kPartNames { "Pad", "Chords", "Melody", "Counter Melody", "Bass", "Arp" };
+const juce::StringArray kPartNames { "Pad", "Chords", "Melody", "Counter Melody", "Bass", "Arp", "Pluck" };
 const juce::StringArray kBarChoices { "As source", "1", "2", "4", "8", "16" };
 const juce::StringArray kArpChoices { "Up", "Down", "Up-Down", "Down-Up", "Converge", "Random" };
 const juce::StringArray kHarmonyChoices { "Auto", "1 per bar", "2 per bar", "1 per beat" };
@@ -218,8 +218,11 @@ void HarmoniaProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     {
         if (const auto position = playHead->getPosition())
         {
-            if (const auto hostBpm = position->getBpm())
-                bpm = *hostBpm;
+            if (const auto tempo = position->getBpm())
+            {
+                bpm = *tempo;
+                hostBpm.store(*tempo);
+            }
 
             if (followHost && position->getIsPlaying())
             {
@@ -279,7 +282,8 @@ void HarmoniaProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
 harmonia::GenerateOptions HarmoniaProcessor::currentOptions() const
 {
     GenerateOptions options;
-    options.part = static_cast<PartType>(juce::jlimit(0, 5, static_cast<int>(apvts.getRawParameterValue(ParamID::part)->load())));
+    options.part = static_cast<PartType>(juce::jlimit(0, kPartNames.size() - 1,
+                                                      static_cast<int>(apvts.getRawParameterValue(ParamID::part)->load())));
     options.seed = seed;
     options.density = apvts.getRawParameterValue(ParamID::density)->load();
     options.complexity = apvts.getRawParameterValue(ParamID::complexity)->load();
@@ -320,7 +324,12 @@ void HarmoniaProcessor::regenerate()
 {
     applyAnalysisOptions();
 
-    if (! engine.hasSource() || ! engine.analysis().valid)
+    // With no clip to take a tempo from, follow the host.
+    if (! engine.hasSource())
+        engine.setBlankCanvas(hostBpm.load(), 1);
+
+    // A written progression is enough on its own - no clip required.
+    if (! engine.analysis().valid)
     {
         generated = NoteSequence {};
         publish(nullptr);
@@ -364,6 +373,56 @@ void HarmoniaProcessor::reharmonize(float amount)
 void HarmoniaProcessor::resetProgression()
 {
     engine.resetProgression();
+    regenerate();
+}
+
+bool HarmoniaProcessor::setProgressionText(const juce::String& text)
+{
+    std::string error;
+    if (! engine.setProgressionText(text.toStdString(), error))
+    {
+        lastError = error;
+        sendChangeMessage();
+        return false;
+    }
+
+    lastError.clear();
+    regenerate();
+    return true;
+}
+
+bool HarmoniaProcessor::applyPreset(const juce::String& presetId)
+{
+    std::string error;
+    if (! engine.applyPreset(presetId.toStdString(), error))
+    {
+        lastError = error;
+        sendChangeMessage();
+        return false;
+    }
+
+    lastError.clear();
+    regenerate();
+    return true;
+}
+
+juce::String HarmoniaProcessor::getProgressionText() const
+{
+    if (engine.hasWrittenProgression())
+        return juce::String(engine.analysis().progressionString());
+    return engine.analysis().valid ? juce::String(engine.analysis().progressionString()) : juce::String();
+}
+
+void HarmoniaProcessor::setForcedKey(bool forced, int tonic, harmonia::ScaleType scale)
+{
+    keyForced = forced;
+    keyTonic = juce::jlimit(0, 11, tonic);
+    keyScale = scale;
+
+    auto options = engine.analysisOptions();
+    options.forceKey = forced;
+    options.key = { keyTonic, keyScale };
+    engine.setAnalysisOptions(options);
     regenerate();
 }
 
@@ -443,7 +502,8 @@ juce::File HarmoniaProcessor::writeDragFile()
     if (generated.empty())
         return {};
 
-    const auto partName = kPartNames[juce::jlimit(0, 5, static_cast<int>(apvts.getRawParameterValue(ParamID::part)->load()))];
+    const auto partName = kPartNames[juce::jlimit(0, kPartNames.size() - 1,
+                                                 static_cast<int>(apvts.getRawParameterValue(ParamID::part)->load()))];
     const auto stem = (sourceName.isNotEmpty() ? sourceName : juce::String("harmonia")) + "_" + partName.replace(" ", "");
 
     if (dragFile.existsAsFile())
@@ -480,6 +540,11 @@ void HarmoniaProcessor::getStateInformation(juce::MemoryBlock& destData)
     auto state = apvts.copyState();
     state.setProperty("seed", static_cast<juce::int64>(seed), nullptr);
     state.setProperty("sourceName", sourceName, nullptr);
+    state.setProperty("keyForced", keyForced, nullptr);
+    state.setProperty("keyTonic", keyTonic, nullptr);
+    state.setProperty("keyScale", static_cast<int>(keyScale), nullptr);
+    if (engine.hasWrittenProgression())
+        state.setProperty("progression", juce::String(engine.progressionText()), nullptr);
     if (sourceMidiData.getSize() > 0)
         state.setProperty("sourceMidi", sourceMidiData.toBase64Encoding(), nullptr);
 
@@ -512,7 +577,26 @@ void HarmoniaProcessor::setStateInformation(const void* data, int sizeInBytes)
         }
     }
 
+    keyForced = state.getProperty("keyForced", false);
+    keyTonic = juce::jlimit(0, 11, static_cast<int>(state.getProperty("keyTonic", 9)));
+    keyScale = static_cast<harmonia::ScaleType>(static_cast<int>(state.getProperty("keyScale", 1)));
+    if (keyForced)
+    {
+        auto analysisOptions = engine.analysisOptions();
+        analysisOptions.forceKey = true;
+        analysisOptions.key = { keyTonic, keyScale };
+        engine.setAnalysisOptions(analysisOptions);
+    }
+
+    const auto progression = state.getProperty("progression", "").toString();
+    if (progression.isNotEmpty())
+    {
+        std::string error;
+        engine.setProgressionText(progression.toStdString(), error);
+    }
+
     state.removeProperty("sourceMidi", nullptr);
+    state.removeProperty("progression", nullptr);
     apvts.replaceState(state);
     regenerate();
 }

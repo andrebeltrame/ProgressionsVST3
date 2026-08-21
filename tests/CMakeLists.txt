@@ -4,6 +4,8 @@ add_executable(harmonia_tests
     TestTheory.cpp
     TestAnalysis.cpp
     TestGenerators.cpp
+    TestProgression.cpp
+    TestLibrary.cpp
 )
 
 target_link_libraries(harmonia_tests PRIVATE harmonia_core)

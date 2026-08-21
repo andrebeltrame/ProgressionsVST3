@@ -34,9 +34,13 @@ public:
         g.drawText(title.toUpperCase(), inner.removeFromTop(16.0f), juce::Justification::topLeft, true);
         inner.removeFromTop(6.0f);
 
+        const float rowHeight = rows.empty()
+                                    ? 19.0f
+                                    : juce::jlimit(15.0f, 21.0f, inner.getHeight() / static_cast<float>(rows.size()));
+
         for (const auto& [key, value] : rows)
         {
-            auto row = inner.removeFromTop(19.0f);
+            auto row = inner.removeFromTop(rowHeight - 2.0f);
             g.setColour(textDim);
             g.setFont(juce::FontOptions(12.0f));
             g.drawText(key, row.removeFromLeft(row.getWidth() * 0.42f), juce::Justification::centredLeft, true);

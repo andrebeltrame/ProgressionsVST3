@@ -1,6 +1,7 @@
 #include "harmonia/Theory.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <map>
 
@@ -82,6 +83,43 @@ const char* toString(ChordType type)
     return "Major";
 }
 
+bool scaleTypeFromString(const std::string& text, ScaleType& out)
+{
+    std::string lowered;
+    for (char c : text)
+        lowered += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    static const std::pair<const char*, ScaleType> table[] = {
+        { "major", ScaleType::Major },
+        { "maj", ScaleType::Major },
+        { "ionian", ScaleType::Major },
+        { "minor", ScaleType::NaturalMinor },
+        { "min", ScaleType::NaturalMinor },
+        { "natural minor", ScaleType::NaturalMinor },
+        { "aeolian", ScaleType::NaturalMinor },
+        { "harmonic minor", ScaleType::HarmonicMinor },
+        { "melodic minor", ScaleType::MelodicMinor },
+        { "dorian", ScaleType::Dorian },
+        { "phrygian", ScaleType::Phrygian },
+        { "lydian", ScaleType::Lydian },
+        { "mixolydian", ScaleType::Mixolydian },
+        { "locrian", ScaleType::Locrian },
+        { "major pentatonic", ScaleType::MajorPentatonic },
+        { "minor pentatonic", ScaleType::MinorPentatonic },
+        { "blues", ScaleType::Blues },
+    };
+
+    for (const auto& [name, value] : table)
+    {
+        if (lowered == name)
+        {
+            out = value;
+            return true;
+        }
+    }
+    return false;
+}
+
 const std::vector<int>& chordIntervals(ChordType type)
 {
     static const std::map<ChordType, std::vector<int>> table {
@@ -109,6 +147,31 @@ const std::vector<int>& chordIntervals(ChordType type)
     static const std::vector<int> fallback { 0, 4, 7 };
     const auto it = table.find(type);
     return it != table.end() ? it->second : fallback;
+}
+
+const char* numeralSuffix(ChordType type)
+{
+    switch (type)
+    {
+        case ChordType::Dominant7:       return "7";
+        case ChordType::Dominant9:       return "9";
+        case ChordType::Major7:          return "maj7";
+        case ChordType::Major9:          return "maj9";
+        case ChordType::Minor7:          return "7";
+        case ChordType::Minor9:          return "9";
+        case ChordType::Minor6:          return "6";
+        case ChordType::Major6:          return "6";
+        case ChordType::HalfDiminished7: return "\xC3\xB8""7";
+        case ChordType::Diminished:      return "\xC2\xB0";
+        case ChordType::Diminished7:     return "\xC2\xB0""7";
+        case ChordType::Augmented:       return "+";
+        case ChordType::Sus2:            return "sus2";
+        case ChordType::Sus4:            return "sus4";
+        case ChordType::Dominant7Sus4:   return "7sus4";
+        case ChordType::Add9:            return "add9";
+        case ChordType::Power:           return "5";
+        default:                         return "";
+    }
 }
 
 const char* chordSymbol(ChordType type)
@@ -193,9 +256,39 @@ bool Key::isMinorMode() const
     }
 }
 
-std::string Key::name(bool preferFlats) const
+bool Key::preferFlats() const
 {
-    return pitchClassName(tonic, preferFlats) + std::string(" ") + toString(scale);
+    // Work out the parent major key, then read the circle of fifths: anything
+    // past six sharps is written with flats instead.
+    int offsetToParentMajor = 0;
+    switch (scale)
+    {
+        case ScaleType::Dorian:          offsetToParentMajor = 2; break;
+        case ScaleType::Phrygian:        offsetToParentMajor = 4; break;
+        case ScaleType::Lydian:          offsetToParentMajor = 5; break;
+        case ScaleType::Mixolydian:      offsetToParentMajor = 7; break;
+        case ScaleType::NaturalMinor:
+        case ScaleType::HarmonicMinor:
+        case ScaleType::MelodicMinor:
+        case ScaleType::MinorPentatonic:
+        case ScaleType::Blues:           offsetToParentMajor = 9; break;
+        case ScaleType::Locrian:         offsetToParentMajor = 11; break;
+        case ScaleType::Major:
+        case ScaleType::MajorPentatonic: offsetToParentMajor = 0; break;
+    }
+
+    const int parentMajor = mod12(tonic - offsetToParentMajor);
+    return mod12(parentMajor * 7) > 6;
+}
+
+std::string Key::name() const
+{
+    return name(preferFlats());
+}
+
+std::string Key::name(bool useFlats) const
+{
+    return pitchClassName(tonic, useFlats) + std::string(" ") + toString(scale);
 }
 
 std::vector<int> Key::pitchClasses() const
@@ -274,6 +367,11 @@ bool Chord::containsPitchClass(int pitchClass) const
     return std::find(pcs.begin(), pcs.end(), mod12(pitchClass)) != pcs.end();
 }
 
+std::string Chord::name() const
+{
+    return name(false);
+}
+
 std::string Chord::name(bool preferFlats) const
 {
     std::string out = pitchClassName(root, preferFlats) + std::string(chordSymbol(type));
@@ -286,64 +384,73 @@ std::string Chord::romanNumeral(const Key& key) const
 {
     static const char* upper[7] = { "I", "II", "III", "IV", "V", "VI", "VII" };
     static const char* lower[7] = { "i", "ii", "iii", "iv", "v", "vi", "vii" };
-    // Degrees measured against the major scale, so chromatic roots get an accidental.
     static const int majorSteps[7] = { 0, 2, 4, 5, 7, 9, 11 };
+
+    // Degrees are counted in the key's own scale, so A minor reads i VI III VII
+    // rather than i bVI bIII bVII. Scales with fewer than seven notes fall back
+    // to the major scale as the reference.
+    const auto& scaleSteps = scaleIntervals(key.scale);
+    const bool sevenNoteScale = scaleSteps.size() == 7;
+    const int* reference = majorSteps;
+    std::vector<int> keySteps;
+    if (sevenNoteScale)
+    {
+        keySteps.assign(scaleSteps.begin(), scaleSteps.end());
+        reference = keySteps.data();
+    }
 
     const int offset = mod12(root - key.tonic);
     int degree = 0;
     std::string accidental;
+
     bool found = false;
-    for (int i = 0; i < 7; ++i)
+    for (int i = 0; i < 7 && ! found; ++i)
     {
-        if (majorSteps[i] == offset)
+        if (reference[i] == offset)
         {
             degree = i;
             found = true;
-            break;
         }
     }
-    if (! found)
+    for (int i = 0; i < 7 && ! found; ++i)
     {
-        for (int i = 0; i < 7; ++i)
+        if (reference[i] == mod12(offset + 1))
         {
-            if (majorSteps[i] == mod12(offset + 1))
-            {
-                degree = i;
-                accidental = "b";
-                break;
-            }
+            degree = i;
+            accidental = "b";
+            found = true;
+        }
+    }
+    for (int i = 0; i < 7 && ! found; ++i)
+    {
+        if (reference[i] == mod12(offset - 1))
+        {
+            degree = i;
+            accidental = "#";
+            found = true;
         }
     }
 
-    const bool minorish = type == ChordType::Minor || type == ChordType::Minor7
-                       || type == ChordType::Minor9 || type == ChordType::Minor6
-                       || type == ChordType::MinorMajor7 || type == ChordType::Diminished
-                       || type == ChordType::Diminished7 || type == ChordType::HalfDiminished7;
+    bool minorish = type == ChordType::Minor || type == ChordType::Minor7
+                 || type == ChordType::Minor9 || type == ChordType::Minor6
+                 || type == ChordType::MinorMajor7 || type == ChordType::Diminished
+                 || type == ChordType::Diminished7 || type == ChordType::HalfDiminished7;
 
-    std::string numeral = accidental + (minorish ? lower[degree] : upper[degree]);
-
-    switch (type)
+    // Sus and power chords have no third to report, so the case follows whatever
+    // the key itself puts on that degree.
+    const bool hasThird = type != ChordType::Sus2 && type != ChordType::Sus4
+                       && type != ChordType::Dominant7Sus4 && type != ChordType::Power;
+    if (! hasThird && accidental.empty())
     {
-        case ChordType::Dominant7:       numeral += "7"; break;
-        case ChordType::Dominant9:       numeral += "9"; break;
-        case ChordType::Major7:          numeral += "maj7"; break;
-        case ChordType::Major9:          numeral += "maj9"; break;
-        case ChordType::Minor7:          numeral += "7"; break;
-        case ChordType::Minor9:          numeral += "9"; break;
-        case ChordType::Minor6:          numeral += "6"; break;
-        case ChordType::Major6:          numeral += "6"; break;
-        case ChordType::HalfDiminished7: numeral += "\xC3\xB8""7"; break;
-        case ChordType::Diminished:      numeral += "\xC2\xB0"; break;
-        case ChordType::Diminished7:     numeral += "\xC2\xB0""7"; break;
-        case ChordType::Augmented:       numeral += "+"; break;
-        case ChordType::Sus2:            numeral += "sus2"; break;
-        case ChordType::Sus4:            numeral += "sus4"; break;
-        case ChordType::Dominant7Sus4:   numeral += "7sus4"; break;
-        case ChordType::Add9:            numeral += "add9"; break;
-        case ChordType::Power:           numeral += "5"; break;
-        default: break;
+        const auto triads = diatonicTriads(key);
+        if (degree < static_cast<int>(triads.size()))
+        {
+            const ChordType diatonic = triads[static_cast<size_t>(degree)].type;
+            minorish = diatonic == ChordType::Minor || diatonic == ChordType::Diminished;
+        }
     }
-    return numeral;
+
+    return accidental + (minorish ? lower[degree] : upper[degree]) + numeralSuffix(type);
 }
 
 std::vector<Chord> diatonicTriads(const Key& key)

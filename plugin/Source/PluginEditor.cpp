@@ -5,7 +5,36 @@ using namespace harmonia;
 
 namespace
 {
-const juce::StringArray kPartLabels { "Pad", "Chords", "Melody", "Counter", "Bass", "Arp" };
+const juce::StringArray kPartLabels { "Pad", "Chords", "Melody", "Counter", "Bass", "Arp", "Pluck" };
+const juce::StringArray kModeNames { "Major", "Minor", "Dorian", "Mixolydian", "Lydian", "Phrygian", "Harmonic Minor" };
+
+harmonia::ScaleType scaleForModeIndex(int index)
+{
+    switch (index)
+    {
+        case 0:  return harmonia::ScaleType::Major;
+        case 2:  return harmonia::ScaleType::Dorian;
+        case 3:  return harmonia::ScaleType::Mixolydian;
+        case 4:  return harmonia::ScaleType::Lydian;
+        case 5:  return harmonia::ScaleType::Phrygian;
+        case 6:  return harmonia::ScaleType::HarmonicMinor;
+        default: return harmonia::ScaleType::NaturalMinor;
+    }
+}
+
+int modeIndexForScale(harmonia::ScaleType scale)
+{
+    switch (scale)
+    {
+        case harmonia::ScaleType::Major:         return 0;
+        case harmonia::ScaleType::Dorian:        return 2;
+        case harmonia::ScaleType::Mixolydian:    return 3;
+        case harmonia::ScaleType::Lydian:        return 4;
+        case harmonia::ScaleType::Phrygian:      return 5;
+        case harmonia::ScaleType::HarmonicMinor: return 6;
+        default:                                 return 1;
+    }
+}
 
 juce::String formatBpm(double bpm)
 {
@@ -141,6 +170,70 @@ HarmoniaEditor::HarmoniaEditor(HarmoniaProcessor& p)
     levelAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processor.apvts, ParamID::level, levelSlider);
 
+    // ---- Key ------------------------------------------------------------------
+    for (auto* label : { &keyRootLabel, &keyModeLabel })
+    {
+        label->setFont(juce::FontOptions(11.0f, juce::Font::bold));
+        label->setColour(juce::Label::textColourId, textDim);
+        addAndMakeVisible(label);
+    }
+
+    keyRootBox.addItem("Auto", 1);
+    for (int pitchClass = 0; pitchClass < 12; ++pitchClass)
+        keyRootBox.addItem(harmonia::pitchClassName(pitchClass), pitchClass + 2);
+    keyRootBox.setTooltip("Pin the key instead of letting the detector pick it. "
+                          "Roman numerals you type are read in this key.");
+    keyRootBox.onChange = [this] { applyKeyFromControls(); };
+    addAndMakeVisible(keyRootBox);
+
+    keyModeBox.addItemList(kModeNames, 1);
+    keyModeBox.setSelectedId(2, juce::dontSendNotification);
+    keyModeBox.onChange = [this] { applyKeyFromControls(); };
+    addAndMakeVisible(keyModeBox);
+
+    // ---- Written progressions ---------------------------------------------------
+    presetBox.setTextWhenNothingSelected("Style presets...");
+    presetBox.setTooltip("Drop in a ready-made progression, transposed to the current key.");
+    {
+        int itemId = 1;
+        juce::String currentStyle;
+        for (const auto& preset : harmonia::progressionPresets())
+        {
+            if (preset.style != currentStyle.toStdString())
+            {
+                currentStyle = preset.style;
+                presetBox.addSectionHeading(currentStyle);
+            }
+            presetBox.addItem(juce::String(preset.name) + "   " + juce::String(preset.numerals), itemId++);
+        }
+    }
+    presetBox.onChange = [this]
+    {
+        const int index = presetBox.getSelectedItemIndex();
+        const auto& presets = harmonia::progressionPresets();
+        if (juce::isPositiveAndBelow(index, static_cast<int>(presets.size())))
+            processor.applyPreset(presets[static_cast<size_t>(index)].id);
+    };
+    addAndMakeVisible(presetBox);
+
+    progressionField.setMultiLine(false);
+    progressionField.setReturnKeyStartsNewLine(false);
+    progressionField.setTextToShowWhenEmpty("Type chords: Am | F | C | G   or   i VI III VII",
+                                            textDim.withAlpha(0.7f));
+    progressionField.setColour(juce::TextEditor::backgroundColourId, panelLight);
+    progressionField.setColour(juce::TextEditor::outlineColourId, outline);
+    progressionField.setColour(juce::TextEditor::focusedOutlineColourId, accent);
+    progressionField.setColour(juce::TextEditor::textColourId, text);
+    progressionField.setColour(juce::TextEditor::highlightColourId, accent.withAlpha(0.3f));
+    progressionField.setFont(juce::FontOptions(14.0f));
+    progressionField.onReturnKey = [this] { applyTypedProgression(); };
+    progressionField.onFocusLost = [this] { applyTypedProgression(); };
+    addAndMakeVisible(progressionField);
+
+    applyProgressionButton.setTooltip("Use these chords instead of the detected ones");
+    applyProgressionButton.onClick = [this] { applyTypedProgression(); };
+    addAndMakeVisible(applyProgressionButton);
+
     // ---- Actions -------------------------------------------------------------
     diceButton.setTooltip("Roll a new seed - same settings, a different idea");
     diceButton.onClick = [this] { processor.rollNewSeed(); };
@@ -176,8 +269,8 @@ HarmoniaEditor::HarmoniaEditor(HarmoniaProcessor& p)
     refresh();
 
     setResizable(true, true);
-    setResizeLimits(940, 700, 1800, 1200);
-    setSize(1020, 720);
+    setResizeLimits(980, 720, 1800, 1300);
+    setSize(1060, 760);
     startTimerHz(30);
 }
 
@@ -253,13 +346,67 @@ void HarmoniaEditor::refresh()
     exportButton.setEnabled(hasOutput);
     dragArea.setEnabledState(hasOutput);
     playButton.setEnabled(hasOutput);
-    diceButton.setEnabled(hasSource);
-    reharmButton.setEnabled(hasSource);
-    resetChordsButton.setEnabled(hasSource);
     clearButton.setEnabled(hasSource);
 
     pianoRoll.setPlaceholder(hasSource ? "Nothing generated for these settings"
-                                       : "Drop a MIDI clip here, or use Load MIDI");
+                                       : "Drop a MIDI clip here, or just type a progression below");
+
+    refreshProgressionField();
+
+    if (! keyRootBox.hasKeyboardFocus(true))
+    {
+        const int wanted = processor.isKeyForced() ? processor.forcedTonic() + 2 : 1;
+        if (keyRootBox.getSelectedId() != wanted)
+            keyRootBox.setSelectedId(wanted, juce::dontSendNotification);
+        keyModeBox.setSelectedItemIndex(modeIndexForScale(processor.isKeyForced() ? processor.forcedScale()
+                                                                                  : analysis.key.scale),
+                                        juce::dontSendNotification);
+        keyModeBox.setEnabled(processor.isKeyForced());
+        keyModeLabel.setEnabled(processor.isKeyForced());
+    }
+
+    resetChordsButton.setEnabled(hasSource || processor.hasWrittenProgression());
+    diceButton.setEnabled(hasSource || analysis.valid);
+    reharmButton.setEnabled(analysis.valid);
+}
+
+void HarmoniaEditor::applyTypedProgression()
+{
+    const auto text = progressionField.getText().trim();
+    if (text.isEmpty())
+        return;
+
+    // Nothing to do if it already matches what is playing.
+    if (text == processor.getProgressionText())
+        return;
+
+    if (! processor.setProgressionText(text))
+        progressionField.setColour(juce::TextEditor::outlineColourId, warning);
+    else
+        progressionField.setColour(juce::TextEditor::outlineColourId, outline);
+    progressionField.repaint();
+}
+
+void HarmoniaEditor::applyKeyFromControls()
+{
+    const int rootIndex = keyRootBox.getSelectedItemIndex(); // 0 = Auto
+    const bool forced = rootIndex > 0;
+    keyModeBox.setEnabled(forced);
+    keyModeLabel.setEnabled(forced);
+
+    processor.setForcedKey(forced, juce::jmax(0, rootIndex - 1),
+                           scaleForModeIndex(keyModeBox.getSelectedItemIndex()));
+}
+
+void HarmoniaEditor::refreshProgressionField()
+{
+    // Do not fight the user while they are typing.
+    if (progressionField.hasKeyboardFocus(true))
+        return;
+
+    const auto current = processor.getProgressionText();
+    if (current != progressionField.getText())
+        progressionField.setText(current, juce::dontSendNotification);
 }
 
 void HarmoniaEditor::changeListenerCallback(juce::ChangeBroadcaster*)
@@ -420,7 +567,7 @@ void HarmoniaEditor::resized()
     area.removeFromLeft(12);
     {
         // Everything below the read-out is fixed height; the read-out takes the rest.
-        constexpr int controlsHeight = 14 + 26 + 8 + 14 + 26 + 12 + 24 + 4 + 24 + 12 + 14 + 24;
+        constexpr int controlsHeight = 3 * (14 + 26) + 2 * 8 + 12 + 24 + 4 + 24 + 12 + 14 + 24;
         infoPanel.setBounds(side.removeFromTop(juce::jmax(150, side.getHeight() - controlsHeight - 10)));
         side.removeFromTop(10);
 
@@ -431,6 +578,14 @@ void HarmoniaEditor::resized()
         harmonyLabel.setBounds(labelRow.reduced(2, 0));
         lengthBox.setBounds(comboRow.removeFromLeft(half).reduced(2, 0));
         harmonyBox.setBounds(comboRow.reduced(2, 0));
+
+        side.removeFromTop(8);
+        labelRow = side.removeFromTop(14);
+        comboRow = side.removeFromTop(26);
+        keyRootLabel.setBounds(labelRow.removeFromLeft(half).reduced(2, 0));
+        keyModeLabel.setBounds(labelRow.reduced(2, 0));
+        keyRootBox.setBounds(comboRow.removeFromLeft(half).reduced(2, 0));
+        keyModeBox.setBounds(comboRow.reduced(2, 0));
 
         side.removeFromTop(8);
         arpLabel.setBounds(side.removeFromTop(14).removeFromLeft(half).reduced(2, 0));
@@ -453,6 +608,15 @@ void HarmoniaEditor::resized()
 
     // ---- Main view -----------------------------------------------------------
     progressionStrip.setBounds(area.removeFromBottom(54));
+    area.removeFromBottom(6);
+    {
+        auto typeRow = area.removeFromBottom(28);
+        presetBox.setBounds(typeRow.removeFromLeft(230).reduced(0, 1));
+        typeRow.removeFromLeft(8);
+        applyProgressionButton.setBounds(typeRow.removeFromRight(56).reduced(0, 1));
+        typeRow.removeFromRight(6);
+        progressionField.setBounds(typeRow.reduced(0, 1));
+    }
     area.removeFromBottom(8);
     pianoRoll.setBounds(area);
 }

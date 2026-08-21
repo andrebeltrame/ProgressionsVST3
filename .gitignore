@@ -8,3 +8,6 @@ cmake-build-*/
 *.so
 *.vst3
 external/
+
+# Your own MIDI collection, if you copy it into the project
+library/

@@ -33,6 +33,8 @@ void Engine::clear()
     sourceSequence.clear();
     currentAnalysis = Analysis {};
     detectedProgression.clear();
+    if (writtenProgression)
+        rebuildFromWrittenChords();
 }
 
 void Engine::setAnalysisOptions(const AnalysisOptions& newOptions)
@@ -43,8 +45,117 @@ void Engine::setAnalysisOptions(const AnalysisOptions& newOptions)
 
 void Engine::reanalyse()
 {
+    if (sourceSequence.empty())
+    {
+        // No clip: either a written progression or nothing at all.
+        currentAnalysis = Analysis {};
+        detectedProgression.clear();
+        if (writtenProgression)
+            rebuildFromWrittenChords();
+        return;
+    }
+
     currentAnalysis = harmonia::analyze(sourceSequence, options);
     detectedProgression = currentAnalysis.progression;
+
+    if (writtenProgression)
+        rebuildFromWrittenChords();
+}
+
+void Engine::rebuildFromWrittenChords()
+{
+    if (writtenChords.empty())
+        return;
+
+    if (sourceSequence.empty())
+    {
+        const Key key = options.forceKey ? options.key : guessKeyForProgression(writtenChords);
+        currentAnalysis = analysisFromProgression(writtenChords, key, canvasBpm, canvasTimeSignature,
+                                                  canvasBarsPerChord > 0
+                                                      ? canvasBarsPerChord * canvasTimeSignature.numerator
+                                                      : 0,
+                                                  1, kPPQ);
+    }
+    else
+    {
+        applyProgressionTo(currentAnalysis, writtenChords);
+    }
+    detectedProgression = currentAnalysis.progression;
+}
+
+bool Engine::setProgressionText(const std::string& text, std::string& error)
+{
+    Key key = currentAnalysis.valid ? currentAnalysis.key : (options.forceKey ? options.key : Key { 9, ScaleType::NaturalMinor });
+
+    std::vector<Chord> chords;
+    if (! parseProgression(text, key, chords, error))
+        return false;
+
+    writtenChords = std::move(chords);
+    writtenProgression = true;
+    writtenText = text;
+
+    if (sourceSequence.empty() && ! options.forceKey)
+        key = guessKeyForProgression(writtenChords);
+
+    rebuildFromWrittenChords();
+    if (sourceSequence.empty())
+        currentAnalysis.key = key;
+
+    return true;
+}
+
+bool Engine::applyPreset(const std::string& presetId, std::string& error)
+{
+    const auto* preset = findProgressionPreset(presetId);
+    if (preset == nullptr)
+    {
+        error = "No preset called '" + presetId + "'.";
+        return false;
+    }
+
+    // Keep whatever tonic we are already in, but switch to the mode the preset
+    // was written for - "vi IV I V" only means anything in a major key.
+    const int tonic = currentAnalysis.valid ? currentAnalysis.key.tonic
+                                            : (options.forceKey ? options.key.tonic : 9);
+    const Key key { tonic, preset->mode };
+
+    std::vector<Chord> chords;
+    if (! parseProgression(preset->numerals, key, chords, error))
+        return false;
+
+    writtenChords = std::move(chords);
+    writtenProgression = true;
+    writtenText = progressionToText(writtenChords);
+
+    if (currentAnalysis.valid)
+        currentAnalysis.key = key;
+
+    rebuildFromWrittenChords();
+    if (! currentAnalysis.valid && ! writtenChords.empty())
+        currentAnalysis.key = key;
+    else
+        currentAnalysis.key = key;
+
+    return true;
+}
+
+void Engine::setKey(const Key& key)
+{
+    options.forceKey = true;
+    options.key = key;
+    reanalyse();
+    if (! sourceSequence.empty() || writtenProgression)
+        currentAnalysis.key = key;
+}
+
+void Engine::setBlankCanvas(double bpm, int barsPerChord, const TimeSignature& timeSignature)
+{
+    canvasBpm = bpm > 0.0 ? bpm : 122.0;
+    canvasBarsPerChord = barsPerChord > 0 ? barsPerChord : 1;
+    canvasTimeSignature = timeSignature;
+    if (sourceSequence.empty() && writtenProgression)
+        rebuildFromWrittenChords();
 }
 
 NoteSequence Engine::generate(const GenerateOptions& generateOptions) const
@@ -66,7 +177,11 @@ void Engine::applyReharmonization(uint32_t seed, float amount)
 
 void Engine::resetProgression()
 {
-    currentAnalysis.progression = detectedProgression;
+    // Back to what the clip actually said, discarding anything written by hand.
+    writtenProgression = false;
+    writtenChords.clear();
+    writtenText.clear();
+    reanalyse();
 }
 
 void Engine::setChord(size_t index, const Chord& chord)

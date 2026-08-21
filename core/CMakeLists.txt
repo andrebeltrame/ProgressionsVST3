@@ -4,6 +4,10 @@ add_library(harmonia_core STATIC
     src/Theory.cpp
     src/Analysis.cpp
     src/Generators.cpp
+    src/Progression.cpp
+    src/Presets.cpp
+    src/Json.cpp
+    src/Library.cpp
     src/Engine.cpp
 )
 

@@ -50,11 +50,18 @@ enum class ChordType
 const char* toString(ScaleType type);
 const char* toString(ChordType type);
 
+/** Reads back what toString(ScaleType) wrote, plus the obvious aliases. */
+bool scaleTypeFromString(const std::string& text, ScaleType& out);
+
 /** Chord tones as semitone offsets from the root. */
 const std::vector<int>& chordIntervals(ChordType type);
 
 /** Short symbol appended to a root name, e.g. "m7", "maj7", "sus4". */
 const char* chordSymbol(ChordType type);
+
+/** Suffix appended to a roman numeral, e.g. "7", "maj7", "sus4". The case of
+    the numeral itself already carries major/minor. */
+const char* numeralSuffix(ChordType type);
 
 /** Scale steps as semitone offsets from the tonic. */
 const std::vector<int>& scaleIntervals(ScaleType type);
@@ -70,12 +77,17 @@ struct Key
     int tonic = 0; // pitch class 0..11
     ScaleType scale = ScaleType::Major;
 
-    std::string name(bool preferFlats = false) const;
+    /** "Eb Minor". Uses the key's own accidentals unless told otherwise. */
+    std::string name() const;
+    std::string name(bool useFlats) const;
     std::vector<int> pitchClasses() const;
     bool contains(int pitchClass) const;
     /** Index of the pitch class in the scale, or -1 if it is not diatonic. */
     int degreeOf(int pitchClass) const;
     bool isMinorMode() const;
+    /** True for keys that are normally written with flats, so Eb does not come
+        out as D#. */
+    bool preferFlats() const;
     /** Nearest scale tone to the given MIDI pitch. */
     int snapToScale(int midiPitch, int direction = 0) const;
     /** MIDI pitch for scale degree `degree` (may be negative or beyond the octave). */
@@ -88,7 +100,10 @@ struct Chord
     ChordType type = ChordType::Major;
     int bass = -1; // pitch class of an inversion, -1 for root position
 
-    std::string name(bool preferFlats = false) const;
+    /** "Am7", "Cmaj7/G". Sharps unless you ask for flats - Analysis and Key
+        spell chords with the accidentals the key actually uses. */
+    std::string name() const;
+    std::string name(bool useFlats) const;
     std::vector<int> pitchClasses() const;
     bool containsPitchClass(int pitchClass) const;
     /** Roman numeral relative to a key, e.g. "vi", "V7", "bVII". */

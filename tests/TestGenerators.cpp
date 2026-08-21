@@ -252,7 +252,8 @@ TEST(EveryPartTypeProducesNotes)
 {
     auto engine = engineFromBassLine();
     for (PartType part : { PartType::Pad, PartType::Chords, PartType::Melody,
-                           PartType::CounterMelody, PartType::Bass, PartType::Arp })
+                           PartType::CounterMelody, PartType::Bass, PartType::Arp,
+                           PartType::Pluck })
     {
         const auto sequence = engine.generate(cleanOptions(part));
         CHECK(! sequence.empty());
