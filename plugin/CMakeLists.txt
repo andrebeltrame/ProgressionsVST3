@@ -49,6 +49,14 @@ juce_add_plugin(Progressions
     COPY_PLUGIN_AFTER_BUILD ${HARMONIA_INSTALL_PLUGIN}
     VST3_COPY_DIR           "${HARMONIA_VST3_DIR}"
     VST3_CATEGORIES         "Instrument" "Tools"
+    # JUCE writes Contents/Resources/moduleinfo.json into the bundle as a
+    # post-build step, after the bundle has been sealed. On macOS that leaves
+    # the signature invalid ("a sealed resource is missing or invalid"), the
+    # system refuses to load the plugin, and the host skips it without a word -
+    # the plugin simply never appears in the list. The manifest only lets a host
+    # enumerate classes without loading the module, so dropping it costs a
+    # little scan speed and nothing else.
+    VST3_AUTO_MANIFEST      FALSE
     MICROPHONE_PERMISSION_ENABLED FALSE)
 
 target_sources(Progressions PRIVATE

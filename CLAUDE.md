@@ -174,6 +174,19 @@ paths and has to be changed with it.
 The plugin smoke test points `HARMONIA_STYLE_DIR` at a temp folder before it
 constructs anything - without that it would overwrite a real installation.
 
+### The VST3 manifest stays off
+
+`VST3_AUTO_MANIFEST FALSE` is not a style choice. JUCE writes
+`Contents/Resources/moduleinfo.json` into the bundle as a post-build step, after
+the bundle has been sealed, and on macOS that leaves the code signature invalid:
+`codesign -v --strict` reports "a sealed resource is missing or invalid", the
+system refuses to load the plugin, and the host skips it silently - it just
+never appears in the plugin list, with no error anywhere to explain it. This
+cost a long debugging session; do not turn it back on without checking
+`codesign -v --strict` on the built bundle. The manifest only lets a host
+enumerate classes without loading the module, so its absence costs scan speed
+and nothing else.
+
 ## Conventions
 
 - Code and code comments in English. `README.md` and `docs/` are in Portuguese —
