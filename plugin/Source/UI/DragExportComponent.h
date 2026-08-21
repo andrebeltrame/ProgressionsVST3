@@ -2,7 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
-#include "HarmoniaLookAndFeel.h"
+#include "ProgressionsLookAndFeel.h"
 
 /** Drag this out of the plugin window and the generated part lands in the DAW
     as a MIDI clip. */
@@ -43,7 +43,7 @@ public:
 
     void paint(juce::Graphics& g) override
     {
-        using namespace HarmoniaColours;
+        using namespace ProgressionsColours;
         const auto bounds = getLocalBounds().toFloat().reduced(1.0f);
 
         juce::Path outlinePath;

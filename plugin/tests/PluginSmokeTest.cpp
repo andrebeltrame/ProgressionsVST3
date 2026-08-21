@@ -70,7 +70,7 @@ int main(int argc, char** argv)
         return 2;
     }
 
-    HarmoniaProcessor processor;
+    ProgressionsProcessor processor;
 
     std::cout << "Loading " << example.getFileName() << "\n";
     check(processor.loadMidiFile(example), "clip loads");
@@ -179,7 +179,7 @@ int main(int argc, char** argv)
 
     // ---- Chords with no clip at all ---------------------------------------------
     {
-        HarmoniaProcessor blank;
+        ProgressionsProcessor blank;
         blank.setPlayConfigDetails(0, 2, sampleRate, blockSize);
         blank.prepareToPlay(sampleRate, blockSize);
         check(blank.setProgressionText("Fm | Db | Ab | Eb"), "chords work with no clip loaded");
@@ -251,15 +251,15 @@ int main(int argc, char** argv)
 
         // Loading keeps it inside the plugin, so the next instance - in any
         // project, on any day - starts with the same brain and no file path.
-        check(processor.styleSource() == HarmoniaProcessor::StyleSource::Installed,
+        check(processor.styleSource() == ProgressionsProcessor::StyleSource::Installed,
               "loading a model keeps it in the plugin");
         check(styleStore::hasInstalled(), "and writes it to the plugin's own folder");
 
         {
-            HarmoniaProcessor fresh;
+            ProgressionsProcessor fresh;
             check(fresh.hasStyleModel(), "a brand new instance already has a model");
             check(fresh.styleClipCount() == processor.styleClipCount(), "the same one");
-            check(fresh.styleSource() == HarmoniaProcessor::StyleSource::Installed,
+            check(fresh.styleSource() == ProgressionsProcessor::StyleSource::Installed,
                   "and says where it came from");
 
             // A project that referenced a model by path must not rewrite the
@@ -279,8 +279,8 @@ int main(int argc, char** argv)
                                                : juce::String("nothing (-DHARMONIA_STYLE_MODEL not set)"))
                   << "\n";
         check(processor.styleSource() == (styleStore::hasBuiltIn()
-                                              ? HarmoniaProcessor::StyleSource::BuiltIn
-                                              : HarmoniaProcessor::StyleSource::None),
+                                              ? ProgressionsProcessor::StyleSource::BuiltIn
+                                              : ProgressionsProcessor::StyleSource::None),
               "and falls back to whatever is baked into the build");
 
         check(processor.loadStyleModelFile(modelFile), "and it can be installed again");
@@ -294,7 +294,7 @@ int main(int argc, char** argv)
     processor.applyPreset("melodic-lift");
     processor.getStateInformation(state);
 
-    HarmoniaProcessor restored;
+    ProgressionsProcessor restored;
     restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
     check(restored.getEngine().hasSource(), "state restores the source clip");
     check(restored.getSeed() == processor.getSeed(), "state restores the seed");

@@ -1,7 +1,7 @@
 #include "PianoRollComponent.h"
-#include "HarmoniaLookAndFeel.h"
+#include "ProgressionsLookAndFeel.h"
 
-using namespace HarmoniaColours;
+using namespace ProgressionsColours;
 using namespace harmonia;
 
 PianoRollComponent::PianoRollComponent()

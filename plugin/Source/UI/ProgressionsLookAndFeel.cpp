@@ -1,8 +1,8 @@
-#include "HarmoniaLookAndFeel.h"
+#include "ProgressionsLookAndFeel.h"
 
-using namespace HarmoniaColours;
+using namespace ProgressionsColours;
 
-HarmoniaLookAndFeel::HarmoniaLookAndFeel()
+ProgressionsLookAndFeel::ProgressionsLookAndFeel()
 {
     setColour(juce::ResizableWindow::backgroundColourId, background);
     setColour(juce::Label::textColourId, text);
@@ -26,7 +26,7 @@ HarmoniaLookAndFeel::HarmoniaLookAndFeel()
     setColour(juce::TooltipWindow::outlineColourId, outline);
 }
 
-void HarmoniaLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height,
+void ProgressionsLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height,
                                            float sliderPos, float startAngle, float endAngle, juce::Slider& slider)
 {
     // A disabled control has to look disabled, or the greyed-out label is the
@@ -64,7 +64,7 @@ void HarmoniaLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int 
     g.strokePath(pointer, juce::PathStrokeType(2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
-void HarmoniaLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& button,
+void ProgressionsLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& button,
                                                const juce::Colour& backgroundColour,
                                                bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown)
 {
@@ -82,7 +82,7 @@ void HarmoniaLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& 
     g.drawRoundedRectangle(bounds, 5.0f, 1.0f);
 }
 
-void HarmoniaLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& button,
+void ProgressionsLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& button,
                                            bool shouldDrawButtonAsHighlighted, bool)
 {
     const auto bounds = button.getLocalBounds().toFloat();
@@ -111,7 +111,7 @@ void HarmoniaLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton
     g.drawText(button.getButtonText(), bounds.withTrimmedLeft(boxSize + 8.0f), juce::Justification::centredLeft, true);
 }
 
-void HarmoniaLookAndFeel::drawComboBox(juce::Graphics& g, int width, int height, bool,
+void ProgressionsLookAndFeel::drawComboBox(juce::Graphics& g, int width, int height, bool,
                                        int, int, int, int, juce::ComboBox& box)
 {
     const juce::Rectangle<float> bounds(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height));
@@ -128,12 +128,12 @@ void HarmoniaLookAndFeel::drawComboBox(juce::Graphics& g, int width, int height,
     g.fillPath(arrow);
 }
 
-juce::Font HarmoniaLookAndFeel::getLabelFont(juce::Label& label)
+juce::Font ProgressionsLookAndFeel::getLabelFont(juce::Label& label)
 {
     return juce::Font(juce::FontOptions(static_cast<float>(juce::jmin(15, label.getHeight() - 2))));
 }
 
-juce::Font HarmoniaLookAndFeel::getTextButtonFont(juce::TextButton&, int buttonHeight)
+juce::Font ProgressionsLookAndFeel::getTextButtonFont(juce::TextButton&, int buttonHeight)
 {
     return juce::Font(juce::FontOptions(static_cast<float>(juce::jmin(14, buttonHeight - 8))));
 }

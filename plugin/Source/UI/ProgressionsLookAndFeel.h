@@ -2,7 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
-namespace HarmoniaColours
+namespace ProgressionsColours
 {
 const juce::Colour background { 0xff14161c };
 const juce::Colour panel      { 0xff1c1f27 };
@@ -13,12 +13,12 @@ const juce::Colour textDim    { 0xff8b91a0 };
 const juce::Colour accent     { 0xff5ad1a5 };
 const juce::Colour source     { 0xff7aa2f7 };
 const juce::Colour warning    { 0xffef8f6e };
-} // namespace HarmoniaColours
+} // namespace ProgressionsColours
 
-class HarmoniaLookAndFeel : public juce::LookAndFeel_V4
+class ProgressionsLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
-    HarmoniaLookAndFeel();
+    ProgressionsLookAndFeel();
 
     void drawRotarySlider(juce::Graphics&, int x, int y, int width, int height,
                           float sliderPos, float startAngle, float endAngle, juce::Slider&) override;

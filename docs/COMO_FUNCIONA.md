@@ -1,4 +1,4 @@
-# Como o Harmonia funciona por dentro
+# Como o Progressions funciona por dentro
 
 Documento para quem for mexer no código. Todo o miolo está em `core/`, sem
 nenhuma dependência externa — dá para compilar e testar em segundos.
@@ -237,8 +237,9 @@ não o caminho. `plugin/Source/StyleStore.cpp` resolve três origens, nesta orde
 
 1. **Sessão** — um `.style.json` carregado só nesta instância. É a única origem
    que vai para o estado do projeto, porque é a única que o projeto conhece.
-2. **Instalado** — `~/Library/Application Support/Harmonia/library.style.json`
-   (`~/.config/Harmonia` no Linux, `%APPDATA%` no Windows). Escolher um modelo
+2. **Instalado** — `~/Library/Application Support/Nowhr Dynamics/Progressions/`
+   `library.style.json` (`~/.config/nowhr-dynamics/progressions` no Linux,
+   `%APPDATA%\Nowhr Dynamics\Progressions` no Windows). Escolher um modelo
    no editor copia para lá, e toda instância nova nasce com ele.
 3. **Compilado** — `-DHARMONIA_STYLE_MODEL=<arquivo>` transforma o JSON em bytes
    dentro do binário via `juce_add_binary_data`, e `parseStyleModel()` lê direto
@@ -261,7 +262,7 @@ Deep House de Melodic House, escaneie as pastas separadamente e carregue o
 
 ## A camada do plugin
 
-`HarmoniaProcessor` guarda o `harmonia::Engine`, os parâmetros (APVTS) e o
+`ProgressionsProcessor` guarda o `harmonia::Engine`, os parâmetros (APVTS) e o
 resultado. Gerar é caro e acontece na thread de mensagens; o resultado vira um
 `RenderedPart` (eventos em semínimas, `ReferenceCountedObject`) publicado sob
 `SpinLock`. A thread de áudio faz `tryEnter` e, no pior caso, deixa passar um

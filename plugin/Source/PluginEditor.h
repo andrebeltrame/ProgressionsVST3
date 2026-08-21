@@ -4,19 +4,19 @@
 
 #include "PluginProcessor.h"
 #include "UI/DragExportComponent.h"
-#include "UI/HarmoniaLookAndFeel.h"
+#include "UI/ProgressionsLookAndFeel.h"
 #include "UI/InfoPanel.h"
 #include "UI/PianoRollComponent.h"
 #include "UI/ProgressionStrip.h"
 
-class HarmoniaEditor : public juce::AudioProcessorEditor,
+class ProgressionsEditor : public juce::AudioProcessorEditor,
                        public juce::FileDragAndDropTarget,
                        private juce::ChangeListener,
                        private juce::Timer
 {
 public:
-    explicit HarmoniaEditor(HarmoniaProcessor&);
-    ~HarmoniaEditor() override;
+    explicit ProgressionsEditor(ProgressionsProcessor&);
+    ~ProgressionsEditor() override;
 
     void paint(juce::Graphics&) override;
     void resized() override;
@@ -47,8 +47,8 @@ private:
     void applyKeyFromControls();
     void refreshProgressionField();
 
-    HarmoniaProcessor& processor;
-    HarmoniaLookAndFeel lookAndFeel;
+    ProgressionsProcessor& processor;
+    ProgressionsLookAndFeel lookAndFeel;
     juce::TooltipWindow tooltips { this, 500 };
 
     juce::Label titleLabel, taglineLabel, sourceLabel, statusLabel;
@@ -94,5 +94,5 @@ private:
     std::unique_ptr<juce::FileChooser> chooser;
     bool fileDragActive = false;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(HarmoniaEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ProgressionsEditor)
 };

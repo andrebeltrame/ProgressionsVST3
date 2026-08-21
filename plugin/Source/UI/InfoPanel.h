@@ -2,7 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
-#include "HarmoniaLookAndFeel.h"
+#include "ProgressionsLookAndFeel.h"
 
 /** A small key/value read-out for the analysis results. */
 class InfoPanel : public juce::Component
@@ -22,7 +22,7 @@ public:
 
     void paint(juce::Graphics& g) override
     {
-        using namespace HarmoniaColours;
+        using namespace ProgressionsColours;
         auto area = getLocalBounds().toFloat();
         g.setColour(panel);
         g.fillRoundedRectangle(area, 8.0f);

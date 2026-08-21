@@ -55,7 +55,7 @@ int barsForChoice(int index)
 
 // ---------------------------------------------------------------------------
 
-juce::AudioProcessorValueTreeState::ParameterLayout HarmoniaProcessor::createLayout()
+juce::AudioProcessorValueTreeState::ParameterLayout ProgressionsProcessor::createLayout()
 {
     using namespace juce;
     AudioProcessorValueTreeState::ParameterLayout layout;
@@ -99,7 +99,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout HarmoniaProcessor::createLay
     return layout;
 }
 
-HarmoniaProcessor::HarmoniaProcessor()
+ProgressionsProcessor::ProgressionsProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       apvts(*this, nullptr, "HARMONIA", createLayout())
 {
@@ -118,7 +118,7 @@ HarmoniaProcessor::HarmoniaProcessor()
     loadDefaultStyleModel();
 }
 
-HarmoniaProcessor::~HarmoniaProcessor()
+ProgressionsProcessor::~ProgressionsProcessor()
 {
     for (const char* id : { ParamID::part, ParamID::density, ParamID::complexity, ParamID::humanize,
                             ParamID::swing, ParamID::develop, ParamID::octave, ParamID::voices, ParamID::bars,
@@ -132,7 +132,7 @@ HarmoniaProcessor::~HarmoniaProcessor()
 
 // ---------------------------------------------------------------------------
 
-void HarmoniaProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
+void ProgressionsProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     currentSampleRate = sampleRate;
     previewSynth.setCurrentPlaybackSampleRate(sampleRate);
@@ -140,25 +140,25 @@ void HarmoniaProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     internalPPQ = 0.0;
 }
 
-void HarmoniaProcessor::releaseResources()
+void ProgressionsProcessor::releaseResources()
 {
     previewSynth.allNotesOff(0, false);
 }
 
-bool HarmoniaProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
+bool ProgressionsProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
     const auto& main = layouts.getMainOutputChannelSet();
     return main == juce::AudioChannelSet::mono() || main == juce::AudioChannelSet::stereo();
 }
 
-void HarmoniaProcessor::panic(juce::MidiBuffer& midi)
+void ProgressionsProcessor::panic(juce::MidiBuffer& midi)
 {
     const int channel = apvts.getRawParameterValue(ParamID::midiChannel)->load();
     midi.addEvent(juce::MidiMessage::allNotesOff(juce::jlimit(1, 16, channel)), 0);
     previewSynth.allNotesOff(0, true);
 }
 
-void HarmoniaProcessor::renderEvents(juce::MidiBuffer& midi, int numSamples, double bpm, double startPPQ)
+void ProgressionsProcessor::renderEvents(juce::MidiBuffer& midi, int numSamples, double bpm, double startPPQ)
 {
     RenderedPart::Ptr part;
     {
@@ -209,7 +209,7 @@ void HarmoniaProcessor::renderEvents(juce::MidiBuffer& midi, int numSamples, dou
     }
 }
 
-void HarmoniaProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void ProgressionsProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
     buffer.clear();
@@ -289,7 +289,7 @@ void HarmoniaProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
 
 // ---------------------------------------------------------------------------
 
-harmonia::GenerateOptions HarmoniaProcessor::currentOptions() const
+harmonia::GenerateOptions ProgressionsProcessor::currentOptions() const
 {
     GenerateOptions options;
     options.part = static_cast<PartType>(juce::jlimit(0, kPartNames.size() - 1,
@@ -316,13 +316,13 @@ harmonia::GenerateOptions HarmoniaProcessor::currentOptions() const
     return options;
 }
 
-void HarmoniaProcessor::publish(RenderedPart::Ptr part)
+void ProgressionsProcessor::publish(RenderedPart::Ptr part)
 {
     const juce::SpinLock::ScopedLockType lock(partLock);
     activePart = std::move(part);
 }
 
-void HarmoniaProcessor::applyAnalysisOptions()
+void ProgressionsProcessor::applyAnalysisOptions()
 {
     const int wanted = chordsPerBarForChoice(
         static_cast<int>(apvts.getRawParameterValue(ParamID::harmonicRhythm)->load()));
@@ -337,7 +337,7 @@ void HarmoniaProcessor::applyAnalysisOptions()
     engine.setAnalysisOptions(options);
 }
 
-void HarmoniaProcessor::regenerate()
+void ProgressionsProcessor::regenerate()
 {
     applyAnalysisOptions();
 
@@ -360,40 +360,40 @@ void HarmoniaProcessor::regenerate()
     sendChangeMessage();
 }
 
-void HarmoniaProcessor::parameterChanged(const juce::String&, float)
+void ProgressionsProcessor::parameterChanged(const juce::String&, float)
 {
     triggerAsyncUpdate();
 }
 
-void HarmoniaProcessor::handleAsyncUpdate()
+void ProgressionsProcessor::handleAsyncUpdate()
 {
     regenerate();
 }
 
-void HarmoniaProcessor::rollNewSeed()
+void ProgressionsProcessor::rollNewSeed()
 {
     setSeed(static_cast<juce::uint32>(juce::Random::getSystemRandom().nextInt(1000000) + 1));
 }
 
-void HarmoniaProcessor::setSeed(juce::uint32 newSeed)
+void ProgressionsProcessor::setSeed(juce::uint32 newSeed)
 {
     seed = newSeed == 0 ? 1 : newSeed;
     regenerate();
 }
 
-void HarmoniaProcessor::reharmonize(float amount)
+void ProgressionsProcessor::reharmonize(float amount)
 {
     engine.applyReharmonization(seed * 2654435761u + 17u, amount);
     regenerate();
 }
 
-void HarmoniaProcessor::resetProgression()
+void ProgressionsProcessor::resetProgression()
 {
     engine.resetProgression();
     regenerate();
 }
 
-bool HarmoniaProcessor::setProgressionText(const juce::String& text)
+bool ProgressionsProcessor::setProgressionText(const juce::String& text)
 {
     std::string error;
     if (! engine.setProgressionText(text.toStdString(), error))
@@ -408,7 +408,7 @@ bool HarmoniaProcessor::setProgressionText(const juce::String& text)
     return true;
 }
 
-bool HarmoniaProcessor::applyPreset(const juce::String& presetId)
+bool ProgressionsProcessor::applyPreset(const juce::String& presetId)
 {
     std::string error;
     if (! engine.applyPreset(presetId.toStdString(), error))
@@ -423,14 +423,14 @@ bool HarmoniaProcessor::applyPreset(const juce::String& presetId)
     return true;
 }
 
-juce::String HarmoniaProcessor::getProgressionText() const
+juce::String ProgressionsProcessor::getProgressionText() const
 {
     if (engine.hasWrittenProgression())
         return juce::String(engine.analysis().progressionString());
     return engine.analysis().valid ? juce::String(engine.analysis().progressionString()) : juce::String();
 }
 
-bool HarmoniaProcessor::loadStyleModelFile(const juce::File& file, bool install)
+bool ProgressionsProcessor::loadStyleModelFile(const juce::File& file, bool install)
 {
     std::string error;
     harmonia::StyleModel loaded;
@@ -466,7 +466,7 @@ bool HarmoniaProcessor::loadStyleModelFile(const juce::File& file, bool install)
     return true;
 }
 
-void HarmoniaProcessor::loadDefaultStyleModel()
+void ProgressionsProcessor::loadDefaultStyleModel()
 {
     harmonia::StyleModel loaded;
     std::string error;
@@ -500,14 +500,14 @@ void HarmoniaProcessor::loadDefaultStyleModel()
     styleOrigin = StyleSource::None;
 }
 
-void HarmoniaProcessor::forgetInstalledStyleModel()
+void ProgressionsProcessor::forgetInstalledStyleModel()
 {
     styleStore::forget();
     loadDefaultStyleModel();
     regenerate();
 }
 
-void HarmoniaProcessor::clearStyleModel()
+void ProgressionsProcessor::clearStyleModel()
 {
     styleModel = harmonia::StyleModel {};
     styleFile = juce::File();
@@ -515,12 +515,12 @@ void HarmoniaProcessor::clearStyleModel()
     regenerate();
 }
 
-juce::String HarmoniaProcessor::styleSummary() const
+juce::String ProgressionsProcessor::styleSummary() const
 {
     return styleModel.empty() ? juce::String() : juce::String(styleModel.summary());
 }
 
-juce::String HarmoniaProcessor::styleSourceText() const
+juce::String ProgressionsProcessor::styleSourceText() const
 {
     switch (styleOrigin)
     {
@@ -532,7 +532,7 @@ juce::String HarmoniaProcessor::styleSourceText() const
     return {};
 }
 
-void HarmoniaProcessor::setForcedKey(bool forced, int tonic, harmonia::ScaleType scale)
+void ProgressionsProcessor::setForcedKey(bool forced, int tonic, harmonia::ScaleType scale)
 {
     keyForced = forced;
     keyTonic = juce::jlimit(0, 11, tonic);
@@ -545,7 +545,7 @@ void HarmoniaProcessor::setForcedKey(bool forced, int tonic, harmonia::ScaleType
     regenerate();
 }
 
-void HarmoniaProcessor::nudgeChord(int index, int direction)
+void ProgressionsProcessor::nudgeChord(int index, int direction)
 {
     const auto& progression = engine.analysis().progression;
     if (! juce::isPositiveAndBelow(index, static_cast<int>(progression.size())))
@@ -568,7 +568,7 @@ void HarmoniaProcessor::nudgeChord(int index, int direction)
 
 // ---------------------------------------------------------------------------
 
-bool HarmoniaProcessor::loadMidiFile(const juce::File& file)
+bool ProgressionsProcessor::loadMidiFile(const juce::File& file)
 {
     juce::MemoryBlock block;
     if (! file.loadFileAsData(block))
@@ -580,7 +580,7 @@ bool HarmoniaProcessor::loadMidiFile(const juce::File& file)
     return loadMidiFromData(block.getData(), block.getSize(), file.getFileNameWithoutExtension());
 }
 
-bool HarmoniaProcessor::loadMidiFromData(const void* data, size_t size, const juce::String& displayName)
+bool ProgressionsProcessor::loadMidiFromData(const void* data, size_t size, const juce::String& displayName)
 {
     std::string error;
     if (! engine.loadSourceFromMemory(static_cast<const juce::uint8*>(data), size, error))
@@ -597,7 +597,7 @@ bool HarmoniaProcessor::loadMidiFromData(const void* data, size_t size, const ju
     return true;
 }
 
-void HarmoniaProcessor::clearSource()
+void ProgressionsProcessor::clearSource()
 {
     engine.clear();
     generated = NoteSequence {};
@@ -607,7 +607,7 @@ void HarmoniaProcessor::clearSource()
     sendChangeMessage();
 }
 
-bool HarmoniaProcessor::exportGenerated(const juce::File& destination)
+bool ProgressionsProcessor::exportGenerated(const juce::File& destination)
 {
     if (generated.empty())
         return false;
@@ -616,7 +616,7 @@ bool HarmoniaProcessor::exportGenerated(const juce::File& destination)
     return destination.replaceWithData(bytes.data(), bytes.size());
 }
 
-juce::File HarmoniaProcessor::writeDragFile()
+juce::File ProgressionsProcessor::writeDragFile()
 {
     if (generated.empty())
         return {};
@@ -635,26 +635,26 @@ juce::File HarmoniaProcessor::writeDragFile()
 
 // ---------------------------------------------------------------------------
 
-void HarmoniaProcessor::startPlayback()
+void ProgressionsProcessor::startPlayback()
 {
     internalPPQ = 0.0;
     internalPlaying.store(true);
 }
 
-void HarmoniaProcessor::stopPlayback()
+void ProgressionsProcessor::stopPlayback()
 {
     internalPlaying.store(false);
     reportedPosition.store(0.0);
 }
 
-double HarmoniaProcessor::getPlayPositionNormalised() const
+double ProgressionsProcessor::getPlayPositionNormalised() const
 {
     return reportedPosition.load();
 }
 
 // ---------------------------------------------------------------------------
 
-void HarmoniaProcessor::getStateInformation(juce::MemoryBlock& destData)
+void ProgressionsProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
     state.setProperty("seed", static_cast<juce::int64>(seed), nullptr);
@@ -676,7 +676,7 @@ void HarmoniaProcessor::getStateInformation(juce::MemoryBlock& destData)
         copyXmlToBinary(*xml, destData);
 }
 
-void HarmoniaProcessor::setStateInformation(const void* data, int sizeInBytes)
+void ProgressionsProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
     auto xml = getXmlFromBinary(data, sizeInBytes);
     if (xml == nullptr)
@@ -734,12 +734,12 @@ void HarmoniaProcessor::setStateInformation(const void* data, int sizeInBytes)
     regenerate();
 }
 
-juce::AudioProcessorEditor* HarmoniaProcessor::createEditor()
+juce::AudioProcessorEditor* ProgressionsProcessor::createEditor()
 {
-    return new HarmoniaEditor(*this);
+    return new ProgressionsEditor(*this);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new HarmoniaProcessor();
+    return new ProgressionsProcessor();
 }

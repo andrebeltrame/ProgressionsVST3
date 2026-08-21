@@ -1,7 +1,7 @@
-# Harmonia
+# Progressions
 
-Plugin **VST 3** (e app standalone) para gerar ideias musicais a partir da sua
-própria harmonia. Três caminhos, todos levando ao mesmo lugar:
+**Nowhr Dynamics** · Plugin **VST 3** (e app standalone) para gerar ideias
+musicais a partir da sua própria harmonia. Três caminhos, todos levando ao mesmo lugar:
 
 1. **Solta um MIDI** — baixo, pad, lead, pluck — e o plugin descobre a
    progressão que está por trás dele.
@@ -11,7 +11,7 @@ própria harmonia. Três caminhos, todos levando ao mesmo lugar:
 Com a harmonia definida, ele escreve pads, melodias, contracantos, baixos,
 arpejos e plucks em cima dela — e você arrasta o resultado direto para o DAW.
 
-![Interface do Harmonia](docs/interface.png)
+![Interface do Progressions](docs/interface.png)
 
 ---
 
@@ -172,7 +172,7 @@ Em pendrive ou HD formatado em **exFAT/FAT32**, o macOS cria um gêmeo `._nome.m
 para cada arquivo copiado. Eles casam com a extensão mas são lixo de resource
 fork — o scan os ignora e reporta na linha `System files`, junto com `__MACOSX`,
 `.Trashes` e outras pastas de sistema. Por isso o `find` costuma contar o dobro
-do que o Harmonia indexa; para comparar de verdade, filtre:
+do que o Progressions indexa; para comparar de verdade, filtre:
 
 ```bash
 find "/Volumes/KINGSTON" \( -iname "*.mid" -o -iname "*.midi" \) \
@@ -271,7 +271,7 @@ você escolhe um `.style.json` em **Learn from my library…**, o modelo é copi
 para dentro do plugin:
 
 ```
-~/Library/Application Support/Harmonia/library.style.json
+~/Library/Application Support/Nowhr Dynamics/Progressions/library.style.json
 ```
 
 A partir daí **toda instância nova, em qualquer projeto, já abre com ele
@@ -407,7 +407,7 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DHARMONIA_BUILD_PLUGIN=
 cmake --build build
 ```
 
-O `.vst3` fica em `build/plugin/Harmonia_artefacts/Release/VST3/Harmonia.vst3`.
+O `.vst3` fica em `build/plugin/Progressions_artefacts/Release/VST3/Progressions.vst3`.
 Copie para `~/.vst3/`.
 
 ### macOS
@@ -462,7 +462,7 @@ cmake --build build
 
 ## Usando no DAW
 
-1. Abra o Harmonia como **instrumento** numa pista.
+1. Abra o Progressions como **instrumento** numa pista.
 2. Arraste um `.mid` para a janela, ou digite uma progressão, ou escolha um preset.
 3. Confira o painel de análise e a régua de acordes.
 4. Escolha a parte (**Pad**, **Melody**, **Pluck**, …) e mexa nos botões.

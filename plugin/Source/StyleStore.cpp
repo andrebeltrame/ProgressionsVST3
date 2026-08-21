@@ -3,7 +3,7 @@
 #include "harmonia/StyleModel.h"
 
 #if HARMONIA_HAS_EMBEDDED_STYLE
- #include "HarmoniaStyleData.h"
+ #include "ProgressionsStyleData.h"
 #endif
 
 namespace styleStore
@@ -25,13 +25,13 @@ juce::File directory()
     // home folder on Linux. harmonia-cli's --install mirrors these paths.
    #if JUCE_MAC
     return juce::File::getSpecialLocation(juce::File::userHomeDirectory)
-        .getChildFile("Library/Application Support/Harmonia");
+        .getChildFile("Library/Application Support/Nowhr Dynamics/Progressions");
    #elif JUCE_WINDOWS
     return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-        .getChildFile("Harmonia");
+        .getChildFile("Nowhr Dynamics").getChildFile("Progressions");
    #else
     return juce::File::getSpecialLocation(juce::File::userHomeDirectory)
-        .getChildFile(".config/Harmonia");
+        .getChildFile(".config/nowhr-dynamics/progressions");
    #endif
 }
 
@@ -88,7 +88,7 @@ bool forget()
 bool hasBuiltIn()
 {
    #if HARMONIA_HAS_EMBEDDED_STYLE
-    return HarmoniaStyleData::namedResourceListSize > 0;
+    return ProgressionsStyleData::namedResourceListSize > 0;
    #else
     return false;
    #endif
@@ -97,11 +97,11 @@ bool hasBuiltIn()
 std::string builtInJson()
 {
    #if HARMONIA_HAS_EMBEDDED_STYLE
-    if (HarmoniaStyleData::namedResourceListSize <= 0)
+    if (ProgressionsStyleData::namedResourceListSize <= 0)
         return {};
 
     int size = 0;
-    if (const char* data = HarmoniaStyleData::getNamedResource(HarmoniaStyleData::namedResourceList[0], size))
+    if (const char* data = ProgressionsStyleData::getNamedResource(ProgressionsStyleData::namedResourceList[0], size))
         return std::string(data, static_cast<size_t>(size));
    #endif
     return {};
@@ -110,8 +110,8 @@ std::string builtInJson()
 juce::String builtInName()
 {
    #if HARMONIA_HAS_EMBEDDED_STYLE
-    if (HarmoniaStyleData::namedResourceListSize > 0)
-        return juce::String(HarmoniaStyleData::originalFilenames[0]);
+    if (ProgressionsStyleData::namedResourceListSize > 0)
+        return juce::String(ProgressionsStyleData::originalFilenames[0]);
    #endif
     return {};
 }

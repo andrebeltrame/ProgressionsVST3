@@ -6,13 +6,13 @@
 set(HARMONIA_JUCE_TAG "8.0.6" CACHE STRING "JUCE tag to build against")
 
 if(DEFINED JUCE_PATH AND EXISTS "${JUCE_PATH}/CMakeLists.txt")
-    message(STATUS "Harmonia: using JUCE from ${JUCE_PATH}")
+    message(STATUS "Progressions: using JUCE from ${JUCE_PATH}")
     add_subdirectory("${JUCE_PATH}" juce EXCLUDE_FROM_ALL)
 elseif(EXISTS "${CMAKE_SOURCE_DIR}/external/JUCE/CMakeLists.txt")
-    message(STATUS "Harmonia: using JUCE from external/JUCE")
+    message(STATUS "Progressions: using JUCE from external/JUCE")
     add_subdirectory("${CMAKE_SOURCE_DIR}/external/JUCE" juce EXCLUDE_FROM_ALL)
 else()
-    message(STATUS "Harmonia: fetching JUCE ${HARMONIA_JUCE_TAG}")
+    message(STATUS "Progressions: fetching JUCE ${HARMONIA_JUCE_TAG}")
     include(FetchContent)
     FetchContent_Declare(JUCE
         GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
@@ -21,12 +21,12 @@ else()
     FetchContent_MakeAvailable(JUCE)
 endif()
 
-juce_add_plugin(Harmonia
-    PRODUCT_NAME            "Harmonia"
+juce_add_plugin(Progressions
+    PRODUCT_NAME            "Progressions"
     COMPANY_NAME            "Nowhr Dynamics"
-    BUNDLE_ID               "com.nowhrdynamics.harmonia"
+    BUNDLE_ID               "com.nowhrdynamics.progressions"
     PLUGIN_MANUFACTURER_CODE Nwhr
-    PLUGIN_CODE             Hrm1
+    PLUGIN_CODE             Prg1
     FORMATS                 VST3 Standalone
     IS_SYNTH                TRUE
     NEEDS_MIDI_INPUT        TRUE
@@ -37,11 +37,11 @@ juce_add_plugin(Harmonia
     VST3_CATEGORIES         "Instrument" "Tools"
     MICROPHONE_PERMISSION_ENABLED FALSE)
 
-target_sources(Harmonia PRIVATE
+target_sources(Progressions PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/StyleStore.cpp
-    Source/UI/HarmoniaLookAndFeel.cpp
+    Source/UI/ProgressionsLookAndFeel.cpp
     Source/UI/PianoRollComponent.cpp
     Source/UI/ProgressionStrip.cpp
 )
@@ -61,23 +61,23 @@ if(HARMONIA_STYLE_MODEL)
 
     file(SIZE "${HARMONIA_STYLE_MODEL_ABS}" HARMONIA_STYLE_MODEL_BYTES)
     math(EXPR HARMONIA_STYLE_MODEL_KB "${HARMONIA_STYLE_MODEL_BYTES} / 1024")
-    message(STATUS "Harmonia: baking in ${HARMONIA_STYLE_MODEL_ABS} (${HARMONIA_STYLE_MODEL_KB} KB)")
+    message(STATUS "Progressions: baking in ${HARMONIA_STYLE_MODEL_ABS} (${HARMONIA_STYLE_MODEL_KB} KB)")
 
-    juce_add_binary_data(HarmoniaStyleData
-        HEADER_NAME "HarmoniaStyleData.h"
-        NAMESPACE HarmoniaStyleData
+    juce_add_binary_data(ProgressionsStyleData
+        HEADER_NAME "ProgressionsStyleData.h"
+        NAMESPACE ProgressionsStyleData
         SOURCES "${HARMONIA_STYLE_MODEL_ABS}")
-    set_target_properties(HarmoniaStyleData PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+    set_target_properties(ProgressionsStyleData PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
 
-    target_link_libraries(Harmonia PRIVATE HarmoniaStyleData)
-    target_compile_definitions(Harmonia PRIVATE HARMONIA_HAS_EMBEDDED_STYLE=1)
+    target_link_libraries(Progressions PRIVATE ProgressionsStyleData)
+    target_compile_definitions(Progressions PRIVATE HARMONIA_HAS_EMBEDDED_STYLE=1)
 else()
-    target_compile_definitions(Harmonia PRIVATE HARMONIA_HAS_EMBEDDED_STYLE=0)
+    target_compile_definitions(Progressions PRIVATE HARMONIA_HAS_EMBEDDED_STYLE=0)
 endif()
 
-target_include_directories(Harmonia PRIVATE Source)
+target_include_directories(Progressions PRIVATE Source)
 
-target_compile_definitions(Harmonia PUBLIC
+target_compile_definitions(Progressions PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
@@ -85,7 +85,7 @@ target_compile_definitions(Harmonia PUBLIC
     JUCE_MODAL_LOOPS_PERMITTED=0
 )
 
-target_link_libraries(Harmonia
+target_link_libraries(Progressions
     PRIVATE
         harmonia_core
         juce::juce_audio_utils
@@ -106,7 +106,7 @@ if(HARMONIA_BUILD_TESTS)
         JUCE_STRICT_REFCOUNTEDPOINTER=1
         JUCE_MODAL_LOOPS_PERMITTED=0)
     target_link_libraries(harmonia_plugin_tests PRIVATE
-        Harmonia
+        Progressions
         harmonia_core
         juce::juce_audio_utils
         juce::juce_recommended_config_flags)

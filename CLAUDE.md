@@ -4,9 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Harmonia: a VST3/standalone plugin that reads a MIDI clip (or a progression you
-type), works out the harmony, and writes new parts over it — pads, melodies,
-counter melodies, basslines, arps, plucks.
+Progressions, by Nowhr Dynamics: a VST3/standalone plugin that reads a MIDI clip
+(or a progression you type), works out the harmony, and writes new parts over it
+— pads, melodies, counter melodies, basslines, arps, plucks.
+
+The product is Progressions; the engine keeps the name `harmonia`. Everything a
+user sees — the plugin, its bundle, its app-data folder, the README — says
+Progressions. Everything under `core/`, the `harmonia` namespace, `harmonia-cli`
+and the `HARMONIA_*` build options stay as they are: the engine is a separate
+thing that this plugin happens to wrap, and renaming it would break every
+command and every note the repository owner has written down. Plugin-layer
+classes follow the product (`ProgressionsProcessor`, `ProgressionsEditor`).
 
 Development happens on the branch `claude/vst3-music-idea-generator-vqgacc`.
 

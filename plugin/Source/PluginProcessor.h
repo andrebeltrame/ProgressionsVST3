@@ -33,14 +33,14 @@ constexpr const char* styleAmount = "styleAmount";
 
 /** The plugin: holds the analysis engine, renders the generated part and plays
     it back through MIDI out and a built-in preview voice. */
-class HarmoniaProcessor : public juce::AudioProcessor,
+class ProgressionsProcessor : public juce::AudioProcessor,
                           public juce::ChangeBroadcaster,
                           private juce::AudioProcessorValueTreeState::Listener,
                           private juce::AsyncUpdater
 {
 public:
-    HarmoniaProcessor();
-    ~HarmoniaProcessor() override;
+    ProgressionsProcessor();
+    ~ProgressionsProcessor() override;
 
     // --- AudioProcessor -----------------------------------------------------
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
@@ -51,7 +51,7 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "Harmonia"; }
+    const juce::String getName() const override { return "Progressions"; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return true; }
     bool isMidiEffect() const override { return false; }
@@ -181,5 +181,5 @@ private:
     std::atomic<double> hostBpm { 122.0 };
     bool wasPlaying = false;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(HarmoniaProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ProgressionsProcessor)
 };

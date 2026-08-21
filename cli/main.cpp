@@ -227,7 +227,7 @@ void printAnalysis(const Analysis& analysis)
 void printUsage()
 {
     std::cout <<
-        "Harmonia - MIDI idea generator\n"
+        "Harmonia - the engine behind Progressions (Nowhr Dynamics)\n"
         "\n"
         "  harmonia-cli <input.mid> [options]      analyse a clip and write parts over it\n"
         "  harmonia-cli --progression \"Am F C G\"    write parts over chords you type\n"
@@ -675,14 +675,14 @@ std::filesystem::path pluginStyleDirectory()
 
 #if defined(_WIN32)
     const char* appData = std::getenv("APPDATA");
-    return std::filesystem::path(appData != nullptr ? appData : ".") / "Harmonia";
+    return std::filesystem::path(appData != nullptr ? appData : ".") / "Nowhr Dynamics" / "Progressions";
 #else
     const char* home = std::getenv("HOME");
     const std::filesystem::path base(home != nullptr ? home : ".");
  #if defined(__APPLE__)
-    return base / "Library" / "Application Support" / "Harmonia";
+    return base / "Library" / "Application Support" / "Nowhr Dynamics" / "Progressions";
  #else
-    return base / ".config" / "Harmonia";
+    return base / ".config" / "nowhr-dynamics" / "progressions";
  #endif
 #endif
 }
@@ -825,7 +825,7 @@ int runLearn(const std::vector<std::string>& args)
         std::string installError;
         if (installStyleForPlugin(stylePath, installedPath, installError))
             std::cout << "  Installed into the plugin: " << installedPath << "\n"
-                      << "  Every Harmonia instance will start with it.\n";
+                      << "  Every Progressions instance will start with it.\n";
         else
             std::cerr << "  Could not install it into the plugin: " << installError << "\n";
     }

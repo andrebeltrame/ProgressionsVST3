@@ -2,7 +2,7 @@
 
 #include <iterator>
 
-using namespace HarmoniaColours;
+using namespace ProgressionsColours;
 using namespace harmonia;
 
 namespace
@@ -43,7 +43,7 @@ juce::String formatBpm(double bpm)
     return juce::String(bpm, 1) + " BPM";
 }
 
-juce::String styleRowText(const HarmoniaProcessor& processor)
+juce::String styleRowText(const ProgressionsProcessor& processor)
 {
     const int clips = processor.styleClipCount();
     auto text = juce::String(clips) + (clips == 1 ? " clip" : " clips");
@@ -54,12 +54,12 @@ juce::String styleRowText(const HarmoniaProcessor& processor)
 }
 } // namespace
 
-HarmoniaEditor::HarmoniaEditor(HarmoniaProcessor& p)
+ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
     : AudioProcessorEditor(&p), processor(p)
 {
     setLookAndFeel(&lookAndFeel);
 
-    titleLabel.setText("HARMONIA", juce::dontSendNotification);
+    titleLabel.setText("PROGRESSIONS", juce::dontSendNotification);
     titleLabel.setFont(juce::FontOptions(22.0f, juce::Font::bold));
     titleLabel.setColour(juce::Label::textColourId, accent);
     addAndMakeVisible(titleLabel);
@@ -302,13 +302,13 @@ HarmoniaEditor::HarmoniaEditor(HarmoniaProcessor& p)
     startTimerHz(30);
 }
 
-HarmoniaEditor::~HarmoniaEditor()
+ProgressionsEditor::~ProgressionsEditor()
 {
     processor.removeChangeListener(this);
     setLookAndFeel(nullptr);
 }
 
-void HarmoniaEditor::buildKnob(Knob& knob, const juce::String& name, const char* parameterID, bool rotary)
+void ProgressionsEditor::buildKnob(Knob& knob, const juce::String& name, const char* parameterID, bool rotary)
 {
     knob.slider.setSliderStyle(rotary ? juce::Slider::RotaryHorizontalVerticalDrag : juce::Slider::LinearHorizontal);
     knob.slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 64, 16);
@@ -329,7 +329,7 @@ void HarmoniaEditor::buildKnob(Knob& knob, const juce::String& name, const char*
 
 // ---------------------------------------------------------------------------
 
-void HarmoniaEditor::refresh()
+void ProgressionsEditor::refresh()
 {
     const auto& analysis = processor.getEngine().analysis();
     const bool hasSource = processor.getEngine().hasSource();
@@ -410,7 +410,7 @@ void HarmoniaEditor::refresh()
     reharmButton.setEnabled(analysis.valid);
 }
 
-void HarmoniaEditor::applyTypedProgression()
+void ProgressionsEditor::applyTypedProgression()
 {
     const auto text = progressionField.getText().trim();
     if (text.isEmpty())
@@ -427,7 +427,7 @@ void HarmoniaEditor::applyTypedProgression()
     progressionField.repaint();
 }
 
-void HarmoniaEditor::applyKeyFromControls()
+void ProgressionsEditor::applyKeyFromControls()
 {
     const int rootIndex = keyRootBox.getSelectedItemIndex(); // 0 = Auto
     const bool forced = rootIndex > 0;
@@ -438,7 +438,7 @@ void HarmoniaEditor::applyKeyFromControls()
                            scaleForModeIndex(keyModeBox.getSelectedItemIndex()));
 }
 
-void HarmoniaEditor::refreshProgressionField()
+void ProgressionsEditor::refreshProgressionField()
 {
     // Do not fight the user while they are typing.
     if (progressionField.hasKeyboardFocus(true))
@@ -449,12 +449,12 @@ void HarmoniaEditor::refreshProgressionField()
         progressionField.setText(current, juce::dontSendNotification);
 }
 
-void HarmoniaEditor::changeListenerCallback(juce::ChangeBroadcaster*)
+void ProgressionsEditor::changeListenerCallback(juce::ChangeBroadcaster*)
 {
     refresh();
 }
 
-void HarmoniaEditor::timerCallback()
+void ProgressionsEditor::timerCallback()
 {
     pianoRoll.setPlayPosition(processor.getPlayPositionNormalised());
 
@@ -467,7 +467,7 @@ void HarmoniaEditor::timerCallback()
 
 // ---------------------------------------------------------------------------
 
-void HarmoniaEditor::showLoadDialog()
+void ProgressionsEditor::showLoadDialog()
 {
     chooser = std::make_unique<juce::FileChooser>("Choose a MIDI clip", juce::File(), "*.mid;*.midi");
     chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
@@ -479,7 +479,7 @@ void HarmoniaEditor::showLoadDialog()
                          });
 }
 
-void HarmoniaEditor::showStyleMenu()
+void ProgressionsEditor::showStyleMenu()
 {
     if (! processor.hasStyleModel())
     {
@@ -491,7 +491,7 @@ void HarmoniaEditor::showStyleMenu()
     menu.addSectionHeader(juce::String(processor.styleClipCount()) + " clips, " + processor.styleSourceText());
     menu.addItem(1, "Load another library...");
     menu.addItem(2, "Forget this library",
-                 processor.styleSource() != HarmoniaProcessor::StyleSource::BuiltIn);
+                 processor.styleSource() != ProgressionsProcessor::StyleSource::BuiltIn);
 
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(styleButton),
                        [this](int choice)
@@ -503,7 +503,7 @@ void HarmoniaEditor::showStyleMenu()
                        });
 }
 
-void HarmoniaEditor::showStyleDialog()
+void ProgressionsEditor::showStyleDialog()
 {
     chooser = std::make_unique<juce::FileChooser>("Choose a style model built by 'harmonia-cli learn'",
                                                   processor.styleModelFile().existsAsFile()
@@ -519,7 +519,7 @@ void HarmoniaEditor::showStyleDialog()
                          });
 }
 
-void HarmoniaEditor::showExportDialog()
+void ProgressionsEditor::showExportDialog()
 {
     const auto suggested = juce::File::getSpecialLocation(juce::File::userMusicDirectory)
                                .getChildFile(processor.getSourceName().isNotEmpty()
@@ -538,7 +538,7 @@ void HarmoniaEditor::showExportDialog()
 
 // ---------------------------------------------------------------------------
 
-bool HarmoniaEditor::isInterestedInFileDrag(const juce::StringArray& files)
+bool ProgressionsEditor::isInterestedInFileDrag(const juce::StringArray& files)
 {
     for (const auto& path : files)
         if (path.endsWithIgnoreCase(".mid") || path.endsWithIgnoreCase(".midi"))
@@ -546,19 +546,19 @@ bool HarmoniaEditor::isInterestedInFileDrag(const juce::StringArray& files)
     return false;
 }
 
-void HarmoniaEditor::fileDragEnter(const juce::StringArray&, int, int)
+void ProgressionsEditor::fileDragEnter(const juce::StringArray&, int, int)
 {
     fileDragActive = true;
     repaint();
 }
 
-void HarmoniaEditor::fileDragExit(const juce::StringArray&)
+void ProgressionsEditor::fileDragExit(const juce::StringArray&)
 {
     fileDragActive = false;
     repaint();
 }
 
-void HarmoniaEditor::filesDropped(const juce::StringArray& files, int, int)
+void ProgressionsEditor::filesDropped(const juce::StringArray& files, int, int)
 {
     fileDragActive = false;
     repaint();
@@ -576,7 +576,7 @@ void HarmoniaEditor::filesDropped(const juce::StringArray& files, int, int)
 
 // ---------------------------------------------------------------------------
 
-void HarmoniaEditor::paint(juce::Graphics& g)
+void ProgressionsEditor::paint(juce::Graphics& g)
 {
     g.fillAll(background);
 
@@ -589,7 +589,7 @@ void HarmoniaEditor::paint(juce::Graphics& g)
     }
 }
 
-void HarmoniaEditor::resized()
+void ProgressionsEditor::resized()
 {
     auto area = getLocalBounds().reduced(12);
 

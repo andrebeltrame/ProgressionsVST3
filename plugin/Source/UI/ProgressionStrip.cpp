@@ -1,7 +1,7 @@
 #include "ProgressionStrip.h"
-#include "HarmoniaLookAndFeel.h"
+#include "ProgressionsLookAndFeel.h"
 
-using namespace HarmoniaColours;
+using namespace ProgressionsColours;
 
 ProgressionStrip::ProgressionStrip()
 {
