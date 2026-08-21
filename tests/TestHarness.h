@@ -16,7 +16,8 @@ struct TestCase
 
 std::vector<TestCase>& registry();
 void reportFailure(const char* file, int line, const std::string& message);
-int runAll();
+/** Runs every registered test, or only those whose name contains `filter`. */
+int runAll(const std::string& filter = {});
 
 struct Registrar
 {

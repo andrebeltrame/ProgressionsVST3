@@ -24,11 +24,15 @@ void reportFailure(const char* file, int line, const std::string& message)
     std::cout << "    " << file << ":" << line << "  " << message << "\n";
 }
 
-int runAll()
+int runAll(const std::string& filter)
 {
     int failedTests = 0;
+    int ran = 0;
     for (const auto& test : registry())
     {
+        if (! filter.empty() && test.name.find(filter) == std::string::npos)
+            continue;
+        ++ran;
         currentFailures = 0;
         std::cout << "[ RUN  ] " << test.name << "\n";
         test.body();
@@ -43,8 +47,13 @@ int runAll()
         }
     }
 
-    std::cout << "\n" << registry().size() - static_cast<size_t>(failedTests) << "/" << registry().size()
-              << " tests passed";
+    if (ran == 0)
+    {
+        std::cout << "\nNo test matched '" << filter << "'\n";
+        return 1;
+    }
+
+    std::cout << "\n" << ran - failedTests << "/" << ran << " tests passed";
     if (totalFailures > 0)
         std::cout << ", " << totalFailures << " failed checks";
     std::cout << "\n";
@@ -53,7 +62,8 @@ int runAll()
 
 } // namespace testing
 
-int main()
+int main(int argc, char** argv)
 {
-    return testing::runAll();
+    // An optional substring filter: harmonia_tests Progression
+    return testing::runAll(argc > 1 ? argv[1] : "");
 }
