@@ -715,7 +715,8 @@ NoteSequence writePluck(Context& ctx)
     const auto& options = *ctx.options;
 
     auto onsets = buildOnsets(ctx, 0.35f + 0.55f * options.density, 0.4f,
-                              options.followSourceRhythm || options.useGrooveDonor,
+                              options.followSourceRhythm || options.useGrooveDonor
+                                  || options.companion != nullptr,
                               StyleRole::Pluck);
     applySwing(ctx, onsets);
 
@@ -776,7 +777,7 @@ NoteSequence writeMelodicLine(Context& ctx, bool counterMelody)
 
     const float density = std::clamp(options.density * (counterMelody ? 0.85f : 1.0f), 0.05f, 1.0f);
     auto onsets = buildOnsets(ctx, density, 0.86f,
-                              options.useGrooveDonor
+                              options.useGrooveDonor || options.companion != nullptr
                                   || (options.followSourceRhythm && ! counterMelody),
                               StyleRole::Melody);
     applySwing(ctx, onsets);
@@ -824,8 +825,25 @@ NoteSequence writeMelodicLine(Context& ctx, bool counterMelody)
         return motif;
     };
 
-    const auto motifA = makeMotif(motifLength);
-    const auto motifB = makeMotif(motifLength);
+    // A motif that barely moves reads as a flat line whatever happens later,
+    // so a cramped draw gets one more roll with wider steps.
+    const auto motifRange = [](const std::vector<int>& motif)
+    {
+        const auto [lo, hi] = std::minmax_element(motif.begin(), motif.end());
+        return *hi - *lo;
+    };
+
+    auto motifA = makeMotif(motifLength);
+    if (motifRange(motifA) < 3)
+        motifA = makeMotif(motifLength);
+    auto motifB = makeMotif(motifLength);
+    if (motifRange(motifB) < 3)
+        motifB = makeMotif(motifLength);
+
+    // The arc of the phrase: hold, lift, peak, settle. This is what keeps four
+    // bars from sitting at one height even when the motif repeats exactly.
+    const int peakLift = 2 + (ctx.rng.chance(0.4f) ? 1 : 0);
+    const int phraseArc[4] = { 0, 1, peakLift, ctx.rng.chance(0.5f) ? -1 : 0 };
 
     // Where the source line is heading, so a counter melody can move against it.
     const auto sourcePitchAt = [&ctx](int64_t tick) -> int
@@ -843,6 +861,29 @@ NoteSequence writeMelodicLine(Context& ctx, bool counterMelody)
         return pitch;
     };
 
+    // What the companion part (usually the bass) is holding at a given tick.
+    // An explicitly chained part, or - in the plugin, where you load a bass and
+    // ask for a melody over it - the source clip itself.
+    const NoteSequence* companion = ctx.options->companion;
+    if (companion == nullptr && ctx.source != nullptr && ! ctx.source->empty()
+        && ctx.analysis->role == SourceRole::Bass)
+        companion = ctx.source;
+
+    const auto companionPitchAt = [companion](int64_t tick) -> int
+    {
+        if (companion == nullptr)
+            return -1;
+        int pitch = -1;
+        for (const auto& note : companion->notes)
+        {
+            if (note.startTick > tick)
+                break;
+            if (tick < note.endTick())
+                pitch = note.pitch;
+        }
+        return pitch;
+    };
+
     int previousPitch = -1;
     int repeatCount = 0;
     int previousSourcePitch = -1;
@@ -855,7 +896,7 @@ NoteSequence writeMelodicLine(Context& ctx, bool counterMelody)
         const auto& segment = ctx.chordAt(onset.tick);
 
         const std::vector<int>& motif = (barInPhrase == 2) ? motifB : motifA;
-        const int transposition = (barInPhrase == 1) ? 1 : (barInPhrase == 3 ? -1 : 0);
+        const int transposition = phraseArc[barInPhrase & 3];
 
         int degree = motif[i % motif.size()] + transposition;
         int pitch = ctx.key.pitchForDegree(degree, octaveBase);
@@ -893,11 +934,14 @@ NoteSequence writeMelodicLine(Context& ctx, bool counterMelody)
             }
         }
 
-        // Keep leaps singable.
-        if (previousPitch >= 0 && std::abs(pitch - previousPitch) > 12)
-            pitch = previousPitch + (pitch > previousPitch ? 12 : -12);
-
         pitch = clampPitch(pitch, ctx.lowPitch, ctx.highPitch);
+
+        // Keep leaps singable - after clamping, since folding a note back into
+        // the register is itself an octave jump. The phrase arc pushes notes
+        // out of range on purpose, so this has to be the last word on interval.
+        if (previousPitch >= 0 && std::abs(pitch - previousPitch) > 12)
+            pitch = clampPitch(previousPitch + (pitch > previousPitch ? 12 : -12),
+                               ctx.lowPitch, ctx.highPitch);
 
         if (pitch == previousPitch)
         {
@@ -911,6 +955,21 @@ NoteSequence writeMelodicLine(Context& ctx, bool counterMelody)
         else
         {
             repeatCount = 0;
+        }
+
+        // A melody a semitone off the bass note is a minor ninth - the one
+        // interval that reads as a mistake in this genre. On strong positions,
+        // step off it onto a chord tone.
+        if (onset.accent >= 0.7f)
+        {
+            const int bassPitch = companionPitchAt(onset.tick);
+            if (bassPitch >= 0 && mod12(pitch - bassPitch) == 1)
+            {
+                pitch = clampPitch(nearestChordTone(pitch + 1, segment.chord), ctx.lowPitch, ctx.highPitch);
+                if (previousPitch >= 0 && std::abs(pitch - previousPitch) > 12)
+                    pitch = clampPitch(previousPitch + (pitch > previousPitch ? 12 : -12),
+                                       ctx.lowPitch, ctx.highPitch);
+            }
         }
 
         // Last word on collisions: after leap limiting and repeat breaking the
@@ -943,6 +1002,17 @@ NoteSequence writeMelodicLine(Context& ctx, bool counterMelody)
                                                 : mod12(segment.chord.root
                                                         + (segment.chord.containsPitchClass(mod12(segment.chord.root + 3)) ? 3 : 4));
         last.pitch = clampPitch(nearestPitchWithClass(target, last.pitch), ctx.lowPitch, ctx.highPitch);
+
+        // The cadence rewrites the final pitch after every other guard has run,
+        // so it has to honour the leap limit itself or the phrase can end on a
+        // jump no singer would make.
+        if (out.notes.size() >= 2)
+        {
+            const int approach = out.notes[out.notes.size() - 2].pitch;
+            if (std::abs(last.pitch - approach) > 12)
+                last.pitch = clampPitch(approach + (last.pitch > approach ? 12 : -12),
+                                        ctx.lowPitch, ctx.highPitch);
+        }
 
         if (counterMelody)
         {
@@ -986,7 +1056,20 @@ NoteSequence generate(const Analysis& analysis, const NoteSequence& source, cons
     ctx.beatTicks = std::max<int64_t>(1, analysis.ticksPerBeat());
     ctx.slotTicks = std::max<int64_t>(1, ctx.barTicks / 16);
     ctx.key = analysis.key;
-    ctx.rhythm = options.useGrooveDonor ? options.grooveDonor : analysis.rhythm;
+    if (options.useGrooveDonor)
+    {
+        ctx.rhythm = options.grooveDonor;
+    }
+    else if (options.companion != nullptr && ! options.companion->empty())
+    {
+        // A melody written over a bass should share its syncopation - that
+        // lock is most of what makes two parts sound like one track.
+        ctx.rhythm = buildRhythmProfile(*options.companion, analysis.timeSignature, analysis.ppq);
+    }
+    else
+    {
+        ctx.rhythm = analysis.rhythm;
+    }
 
     ctx.bars = options.bars > 0 ? options.bars : std::max(1, analysis.bars);
     ctx.totalTicks = static_cast<int64_t>(ctx.bars) * ctx.barTicks;

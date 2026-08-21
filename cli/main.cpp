@@ -236,7 +236,9 @@ void printUsage()
         "  harmonia-cli learn [options]            build a style model from part of an index\n"
         "\n"
         "Generating:\n"
-        "  --part <list>        pad, chords, melody, counter, bass, arp (default pad,melody)\n"
+        "  --part <list>        pad, chords, melody, counter, bass, arp, pluck\n"
+"                       (default pad,melody). Parts are written in the order\n"
+"                       given, and each one hears the one before it.\n"
         "  --progression <text> \"Am | F | C | G\" or \"i VI III VII\" - replaces the\n"
         "                       detected chords, keeping the clip's tempo and groove\n"
         "  --preset <id>        use a built-in progression (see: harmonia-cli presets)\n"
@@ -980,6 +982,7 @@ int runGenerate(const std::vector<std::string>& args)
         prefix = input.empty() ? (presetId.empty() ? "harmonia" : presetId) : stem(input);
 
     int written = 0;
+    NoteSequence previousPart;
     for (const auto& name : partNames)
     {
         PartType part;
@@ -992,7 +995,13 @@ int runGenerate(const std::vector<std::string>& args)
         GenerateOptions options = generateOptions;
         options.part = part;
 
+        // Each part hears the one written before it, so a melody locks to the
+        // bass it is sitting on instead of being composed in isolation.
+        options.companion = previousPart.empty() ? nullptr : &previousPart;
+
         const auto takes = engine.generateVariations(options, std::max(1, variations));
+        if (! takes.empty() && ! takes.front().empty())
+            previousPart = takes.front();
         for (size_t i = 0; i < takes.size(); ++i)
         {
             if (takes[i].empty())

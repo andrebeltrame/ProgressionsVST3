@@ -4,6 +4,7 @@
 #include "harmonia/Engine.h"
 
 #include <algorithm>
+#include <algorithm>
 #include <set>
 
 using namespace harmonia;
@@ -216,6 +217,69 @@ TEST(CounterMelodyAvoidsUnisonWithTheSource)
                 && sourceNote.pitch == note.pitch)
                 ++unisons;
     CHECK(unisons == 0);
+}
+
+TEST(PhrasesHaveAnArcInsteadOfSittingFlat)
+{
+    auto engine = engineFromBassLine();
+    auto options = cleanOptions(PartType::Melody);
+    options.bars = 4;
+
+    const auto melody = engine.generate(options);
+    CHECK(melody.notes.size() >= 4u);
+
+    // Average pitch per bar: the phrase should climb away from where it starts
+    // rather than sitting at one height for four bars.
+    const int64_t bar = static_cast<int64_t>(kPPQ) * 4;
+    std::vector<double> heights;
+    for (int index = 0; index < 4; ++index)
+    {
+        double sum = 0.0;
+        int count = 0;
+        for (const auto& note : melody.notes)
+            if (note.startTick >= index * bar && note.startTick < (index + 1) * bar)
+            {
+                sum += note.pitch;
+                ++count;
+            }
+        if (count > 0)
+            heights.push_back(sum / count);
+    }
+
+    CHECK(heights.size() >= 3u);
+    if (heights.size() >= 3)
+    {
+        const auto [lowest, highest] = std::minmax_element(heights.begin(), heights.end());
+        CHECK(*highest - *lowest >= 1.5); // real movement, not a flat line
+    }
+}
+
+TEST(MelodyAvoidsAMinorNinthAgainstTheBass)
+{
+    // A bass holding one note, so any semitone clash is unambiguous.
+    auto bass = fixtures::emptySequence();
+    for (int barIndex = 0; barIndex < 4; ++barIndex)
+        bass.notes.push_back({ static_cast<int64_t>(barIndex) * kPPQ * 4, kPPQ * 4, 33, 100, 0 });
+    bass.sort();
+
+    Engine engine;
+    std::string error;
+    CHECK(engine.setProgressionText("Am | Am | Am | Am", error));
+
+    auto options = cleanOptions(PartType::Melody);
+    options.companion = &bass;
+    options.density = 0.9f;
+    const auto melody = engine.generate(options);
+    CHECK(! melody.empty());
+
+    const int64_t slot = kPPQ / 4;
+    for (const auto& note : melody.notes)
+    {
+        const int position = static_cast<int>((note.startTick % (kPPQ * 4)) / slot);
+        const bool strong = position % 4 == 0;
+        if (strong)
+            CHECK(mod12(note.pitch - 33) != 1); // never a minor ninth on a beat
+    }
 }
 
 TEST(ReharmonizationChangesChordsButKeepsTheGrid)

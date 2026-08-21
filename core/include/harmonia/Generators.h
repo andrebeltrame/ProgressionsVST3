@@ -55,6 +55,11 @@ struct GenerateOptions
     bool useGrooveDonor = false;
     RhythmProfile grooveDonor {};
 
+    /** A part generated just before this one - typically the bass under a
+        melody. The new part borrows its groove and keeps out of its way
+        harmonically. Borrowed pointer; must outlive the generate() call. */
+    const NoteSequence* companion = nullptr;
+
     /** Everything learned from your own collection: which bars you play, how
         your lines move, what you put over a root. Borrowed pointer - it only has
         to outlive the generate() call. */

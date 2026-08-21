@@ -52,6 +52,11 @@ arpejos e plucks em cima dela — e você arrasta o resultado direto para o DAW.
 | **Arp** | Notas do acorde em Up / Down / Up-Down / Down-Up / Converge / Random. |
 | **Pluck** | Notas curtas do acorde em cima do groove, com saltos e oitavas dobradas nos acentos — o pluck de house. |
 
+As partes são escritas na ordem em que você pede, e **cada uma escuta a
+anterior**: peça `--part bass,melody` e a melodia herda o groove do baixo e
+evita bater a nona menor contra ele nos tempos fortes. No plugin, o clipe que
+você carregou faz esse papel quando é um baixo.
+
 Com um *style model* carregado, todas essas partes passam a usar os compassos,
 os movimentos e os espaçamentos aprendidos da sua coleção — veja
 [O cérebro](#o-cérebro-escrever-no-seu-estilo).
@@ -480,7 +485,7 @@ core/      motor em C++17, sem dependência nenhuma (nem JUCE)
            MIDI, teoria, análise, geradores, progressões, presets,
            biblioteca e o modelo de estilo
 cli/       front end de linha de comando
-tests/     77 testes unitários do motor
+tests/     79 testes unitários do motor
 plugin/    invólucro JUCE: processador, editor, componentes de UI
            tests/ traz um smoke test headless do plugin
 resources/ clipes MIDI de exemplo
