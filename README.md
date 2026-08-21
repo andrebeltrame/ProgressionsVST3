@@ -29,6 +29,9 @@ arpejos e plucks em cima dela — e você arrasta o resultado direto para o DAW.
 - [Linha de comando](#linha-de-comando)
 - [Estrutura do projeto](#estrutura-do-projeto)
 
+Com pressa? [`docs/COMANDOS.md`](docs/COMANDOS.md) é a folha de comandos:
+atualizar, conferir, aprender a coleção, compartilhar.
+
 ---
 
 ## O que ele faz
@@ -576,7 +579,7 @@ tests/     80 testes unitários do motor
 plugin/    invólucro JUCE: processador, editor, componentes de UI
            tests/ traz um smoke test headless do plugin
 resources/ clipes MIDI de exemplo
-docs/      como o motor funciona por dentro
+docs/      como o motor funciona por dentro, e COMANDOS.md
 ```
 
 O motor não conhece o JUCE. Isso mantém a análise e a geração testáveis em
