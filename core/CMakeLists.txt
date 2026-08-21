@@ -18,6 +18,9 @@ target_include_directories(harmonia_core PUBLIC
 
 set_target_properties(harmonia_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+find_package(Threads REQUIRED)
+target_link_libraries(harmonia_core PUBLIC Threads::Threads)
+
 if(MSVC)
     target_compile_options(harmonia_core PRIVATE /W4)
 else()

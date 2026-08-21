@@ -2,6 +2,8 @@
 #include "TestHarness.h"
 
 #include "harmonia/Engine.h"
+#include "harmonia/Library.h"
+#include "harmonia/MidiFile.h"
 #include "harmonia/StyleModel.h"
 
 #include <algorithm>
@@ -240,6 +242,81 @@ TEST(StyleAmountZeroIgnoresTheCorpus)
     auto plain = options;
     plain.style = nullptr;
     CHECK_EQ(onsetSlots(ignored), onsetSlots(engine.generate(plain)));
+}
+
+TEST(MergingTwoModelsSumsTheirCounts)
+{
+    StyleModel first;
+    const auto a = syncopatedBass({ 36, 33 });
+    learnFromClip(first, a, analysisFor(a), "bass");
+
+    StyleModel second;
+    const auto b = syncopatedBass({ 41, 36 });
+    learnFromClip(second, b, analysisFor(b), "bass");
+
+    StyleModel expected;
+    learnFromClip(expected, a, analysisFor(a), "bass");
+    learnFromClip(expected, b, analysisFor(b), "bass");
+
+    StyleModel merged = first;
+    merged.merge(second);
+
+    CHECK_EQ(merged.clipsLearned, expected.clipsLearned);
+    CHECK_EQ(merged.barsLearned, expected.barsLearned);
+    CHECK_EQ(merged.stepMarginal.size(), expected.stepMarginal.size());
+    for (const auto& [step, count] : expected.stepMarginal)
+        CHECK_EQ(merged.stepMarginal.at(step), count);
+
+    const auto& mergedBank = merged.patterns.at(StyleRole::Bass);
+    const auto& expectedBank = expected.patterns.at(StyleRole::Bass);
+    CHECK_EQ(mergedBank.size(), expectedBank.size());
+    for (const auto& [mask, pattern] : expectedBank)
+        CHECK_EQ(mergedBank.at(mask).count, pattern.count);
+
+    // Merging an empty model changes nothing.
+    const int before = merged.clipsLearned;
+    merged.merge(StyleModel {});
+    CHECK_EQ(merged.clipsLearned, before);
+}
+
+TEST(LearningFromPartOfALibrary)
+{
+    // One scan of a drive, then a model built from just the part you want.
+    const auto root = std::filesystem::temp_directory_path() / "harmonia_subset_library";
+    std::filesystem::remove_all(root);
+
+    for (int i = 0; i < 6; ++i)
+    {
+        const bool bass = i < 4;
+        const auto path = root / (bass ? "Bass" : "Pads") / ("clip_" + std::to_string(i) + ".mid");
+        std::filesystem::create_directories(path.parent_path());
+        std::string error;
+        midi::writeToFile(path.string(),
+                          bass ? syncopatedBass({ 36, 33, 29, 31 })
+                               : fixtures::chordClip({ { 60, 64, 67 }, { 57, 60, 64 } }),
+                          error);
+    }
+
+    const auto index = scanDirectory(root.string(), {}, {}, nullptr);
+    CHECK_EQ(index.entries.size(), size_t(6));
+
+    LibraryQuery onlyBass;
+    onlyBass.role = "bass";
+    const auto matches = queryLibrary(index, onlyBass);
+    CHECK_EQ(matches.size(), size_t(4));
+
+    const auto model = buildStyleModel(matches, {}, nullptr);
+    CHECK_EQ(model.clipsLearned, 4);
+    CHECK(model.hasPatternsFor(StyleRole::Bass));
+    CHECK(! model.hasPatternsFor(StyleRole::Chords));   // the pads were left out
+
+    // And the whole index gives a model that knows about both.
+    const auto everything = buildStyleModel(index, {}, nullptr);
+    CHECK_EQ(everything.clipsLearned, 6);
+    CHECK(everything.hasPatternsFor(StyleRole::Chords));
+
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
 }
 
 TEST(ModelSurvivesSaveAndLoad)

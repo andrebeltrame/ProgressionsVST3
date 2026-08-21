@@ -8,6 +8,7 @@
 #include "harmonia/StyleModel.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <map>
 #include <iomanip>
@@ -15,6 +16,14 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+#if defined(_WIN32)
+ #include <io.h>
+ #define HARMONIA_STDOUT_IS_TERMINAL (_isatty(_fileno(stdout)) != 0)
+#else
+ #include <unistd.h>
+ #define HARMONIA_STDOUT_IS_TERMINAL (isatty(fileno(stdout)) != 0)
+#endif
 
 using namespace harmonia;
 
@@ -98,6 +107,100 @@ bool parseKeyName(const std::string& text, Key& out)
     return true;
 }
 
+/** One self-updating line on a terminal, an occasional line when piped to a
+    file - 227,000 progress lines in a log helps nobody. */
+class ProgressLine
+{
+public:
+    explicit ProgressLine(bool quiet)
+        : silent(quiet), terminal(HARMONIA_STDOUT_IS_TERMINAL), started(std::chrono::steady_clock::now())
+    {
+    }
+
+    void update(size_t done, size_t total, const std::string& label = {})
+    {
+        if (silent || total == 0)
+            return;
+
+        const auto now = std::chrono::steady_clock::now();
+        const bool last = done >= total;
+
+        if (terminal)
+        {
+            if (! last && now - lastDrawn < std::chrono::milliseconds(120))
+                return;
+        }
+        else
+        {
+            if (! last && done % 5000 != 0)
+                return;
+        }
+        lastDrawn = now;
+
+        const double elapsed = std::chrono::duration<double>(now - started).count();
+        const double rate = elapsed > 0.01 ? static_cast<double>(done) / elapsed : 0.0;
+        const double remaining = rate > 0.5 ? static_cast<double>(total - done) / rate : -1.0;
+
+        std::ostringstream line;
+        line << "  [" << done << "/" << total << "] "
+             << (100 * done / total) << "%";
+        if (rate > 0.5)
+            line << "  " << static_cast<long>(rate) << "/s";
+        if (remaining > 1.0)
+            line << "  faltam " << formatDuration(remaining);
+        if (terminal && ! label.empty())
+            line << "  " << shorten(label, 44);
+
+        const auto text = line.str();
+        if (terminal)
+        {
+            std::cout << "\r" << text;
+            for (size_t i = text.size(); i < width; ++i)
+                std::cout << ' ';
+            std::cout << std::flush;
+            width = std::max(width, text.size());
+        }
+        else
+        {
+            std::cout << text << "\n";
+        }
+    }
+
+    /** Clears the line so whatever prints next starts clean. */
+    void finish()
+    {
+        if (silent || ! terminal || width == 0)
+            return;
+        std::cout << "\r" << std::string(width, ' ') << "\r" << std::flush;
+        width = 0;
+    }
+
+private:
+    static std::string formatDuration(double seconds)
+    {
+        if (seconds < 90.0)
+            return std::to_string(static_cast<int>(seconds)) + "s";
+        if (seconds < 5400.0)
+            return std::to_string(static_cast<int>(seconds / 60.0)) + "min";
+        std::ostringstream out;
+        out << std::fixed << std::setprecision(1) << (seconds / 3600.0) << "h";
+        return out.str();
+    }
+
+    static std::string shorten(const std::string& text, size_t limit)
+    {
+        if (text.size() <= limit)
+            return text;
+        return "..." + text.substr(text.size() - (limit - 3));
+    }
+
+    bool silent = false;
+    bool terminal = false;
+    std::chrono::steady_clock::time_point started;
+    std::chrono::steady_clock::time_point lastDrawn {};
+    size_t width = 0;
+};
+
 void printAnalysis(const Analysis& analysis)
 {
     std::cout << "  Key            : " << analysis.key.name()
@@ -130,6 +233,7 @@ void printUsage()
         "  harmonia-cli presets [--genre X]        list the built-in progressions\n"
         "  harmonia-cli scan <folder> [options]    index a folder of MIDI files\n"
         "  harmonia-cli library [options]          search an index\n"
+        "  harmonia-cli learn [options]            build a style model from part of an index\n"
         "\n"
         "Generating:\n"
         "  --part <list>        pad, chords, melody, counter, bass, arp (default pad,melody)\n"
@@ -168,6 +272,7 @@ void printUsage()
         "  --skip-drums         leave percussion out of the index\n"
         "  --dry-run            count what is there without reading anything\n"
         "  --follow-symlinks    walk into folder symlinks and aliases too\n"
+        "  --threads <n>        files to read at once (default: one per core)\n"
         "  --style <file>       where to write the style model\n"
         "                       (default: alongside the index, as *.style.json)\n"
         "  --no-learn           only catalogue, do not learn a style model\n"
@@ -185,7 +290,17 @@ void printUsage()
         "  --limit <n>          maximum results (default 40)\n"
         "  --tags               show the tag histogram instead of the clips\n"
         "  --progressions       show the progressions mined from your own clips\n"
-        "  --style <file>       style model to read for --progressions\n";
+        "  --style <file>       style model to read for --progressions\n"
+        "\n"
+        "learn:  takes the same filters as library, and learns from what matches.\n"
+        "        One scan of a big drive, then as many focused models as you want.\n"
+        "  --index <file>       index to learn from (default harmonia-library.json)\n"
+        "  --style <file>       where to write the model (required)\n"
+        "  --quiet              no progress output\n"
+        "\n"
+        "  harmonia-cli scan /Volumes/Drive --index ~/all.json --no-learn\n"
+        "  harmonia-cli learn --index ~/all.json --tag \"melodic house\" --style ~/melodic.style.json\n"
+        "  harmonia-cli --preset melodic-lift --style ~/melodic.style.json --part bass,melody\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -251,6 +366,7 @@ int runScan(const std::vector<std::string>& args)
         else if (arg == "--no-learn")         learn = false;
         else if (arg == "--follow-symlinks")  options.followSymlinks = true;
         else if (arg == "--dry-run")          options.dryRun = true;
+        else if (arg == "--threads")          options.threads = static_cast<unsigned>(std::stoul(value()));
         else if (arg == "--quiet")            quiet = true;
         else
         {
@@ -260,10 +376,10 @@ int runScan(const std::vector<std::string>& args)
     }
 
     std::vector<std::string> errors;
-    const auto progress = [quiet](const std::string& relative, size_t done, size_t total)
+    ProgressLine progressLine(quiet);
+    const auto progress = [&progressLine](const std::string& relative, size_t done, size_t total)
     {
-        if (! quiet)
-            std::cout << "  [" << done << "/" << total << "] " << relative << "\n";
+        progressLine.update(done, total, relative);
     };
 
     if (stylePath.empty())
@@ -275,6 +391,7 @@ int runScan(const std::vector<std::string>& args)
     std::cout << "Scanning " << root << "\n";
     StyleModel style;
     const auto index = scanDirectory(root, options, progress, &errors, learn ? &style : nullptr);
+    progressLine.finish();
 
     const auto& stats = index.stats;
 
@@ -534,6 +651,122 @@ int runLibrary(const std::vector<std::string>& args)
         std::cout << "\nUse one as a groove donor:  harmonia-cli --preset deep-warm --index "
                   << indexPath << " --groove \"" << results.front()->name << "\" --part pluck\n";
     return results.empty() ? 1 : 0;
+}
+
+// ---------------------------------------------------------------------------
+// learn
+// ---------------------------------------------------------------------------
+
+int runLearn(const std::vector<std::string>& args)
+{
+    std::string indexPath = "harmonia-library.json";
+    std::string stylePath;
+    LibraryQuery query;
+    bool quiet = false;
+
+    for (size_t i = 0; i < args.size(); ++i)
+    {
+        const auto& arg = args[i];
+        const auto value = [&]() -> std::string { return (i + 1 < args.size()) ? args[++i] : std::string(); };
+
+        if (arg == "--index")            indexPath = value();
+        else if (arg == "--style")       stylePath = value();
+        else if (arg == "--tag")         query.tag = value();
+        else if (arg == "--role")        query.role = value();
+        else if (arg == "--contains")    query.containing = value();
+        else if (arg == "--min-bars")    query.minBars = std::stoi(value());
+        else if (arg == "--with-drums")  query.excludeDrums = false;
+        else if (arg == "--limit")       query.limit = static_cast<size_t>(std::stoul(value()));
+        else if (arg == "--quiet")       quiet = true;
+        else if (arg == "--key")
+        {
+            Key key;
+            if (! parseKeyName(value(), key))
+            {
+                std::cerr << "Could not understand that key name.\n";
+                return 1;
+            }
+            query.tonic = key.tonic;
+            query.matchMode = true;
+            query.mode = key.scale;
+        }
+        else if (arg == "--bpm")
+        {
+            const auto range = split(value(), '-');
+            if (! range.empty())
+                query.minBpm = std::stod(range[0]);
+            if (range.size() > 1)
+                query.maxBpm = std::stod(range[1]);
+        }
+        else
+        {
+            std::cerr << "Unknown learn option: " << arg << "\n";
+            return 1;
+        }
+    }
+
+    if (stylePath.empty())
+    {
+        std::cerr << "learn needs --style <file>, so it does not overwrite the model your scan made.\n"
+                  << "  harmonia-cli learn --index ~/all.json --tag \"melodic house\" --style ~/melodic.style.json\n";
+        return 1;
+    }
+
+    LibraryIndex index;
+    std::string error;
+    if (! loadIndex(indexPath, index, error))
+    {
+        std::cerr << "Error: " << error << "\n"
+                  << "Build an index first:  harmonia-cli scan /path/to/midis --no-learn\n";
+        return 1;
+    }
+
+    const auto matches = queryLibrary(index, query);
+    std::cout << "Learning from " << matches.size() << " of " << index.entries.size() << " clips\n";
+    if (matches.empty())
+    {
+        std::cerr << "Nothing matched those filters. Try 'harmonia-cli library --index "
+                  << indexPath << " --tags' to see what is there.\n";
+        return 1;
+    }
+
+    std::vector<std::string> errors;
+    ProgressLine progressLine(quiet);
+    const auto progress = [&progressLine](size_t done, size_t total)
+    {
+        progressLine.update(done, total);
+    };
+
+    const auto model = buildStyleModel(matches, progress, &errors);
+    progressLine.finish();
+
+    if (model.empty())
+    {
+        std::cerr << "None of those clips could be read.\n";
+        return 1;
+    }
+
+    if (! saveStyleModel(stylePath, model, error))
+    {
+        std::cerr << "Error: " << error << "\n";
+        return 1;
+    }
+
+    std::cout << "Wrote " << stylePath << "\n  " << model.summary() << "\n";
+    if (! errors.empty())
+        std::cout << "  " << errors.size() << " clips could not be read and were skipped\n";
+
+    const auto top = model.topProgressions(6);
+    if (! top.empty())
+    {
+        std::cout << "  Most common progressions here:\n";
+        for (const auto& [progression, count] : top)
+            std::cout << "    " << std::left << std::setw(40) << progression << count << " clips\n";
+    }
+
+    std::cout << "\nWrite with it:\n"
+              << "  harmonia-cli --preset melodic-lift --style " << stylePath << " --part bass,melody\n";
+    return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -816,6 +1049,8 @@ int main(int argc, char** argv)
         return runLibrary(rest);
     if (first == "presets")
         return runPresets(rest);
+    if (first == "learn")
+        return runLearn(rest);
 
     return runGenerate(args);
 }

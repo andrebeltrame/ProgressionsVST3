@@ -289,9 +289,10 @@ com material real — me diga o que sair.
 Um arquivo de MIDIs baixado da internet pode ter centenas de milhares de
 arquivos. Duas coisas para saber antes de apontar o scan para um desses:
 
-- **Tempo.** Loops curtos são instantâneos; arranjos completos custam uns 30 ms
-  cada. Uma coleção de 200 mil músicas inteiras leva horas. Use `--dry-run`
-  antes para saber com o que você está lidando.
+- **Tempo.** Loops curtos custam menos de 1 ms; arranjos completos, uns 30 ms.
+  Dividido pelos núcleos da máquina, 200 mil arquivos ficam na casa dos minutos
+  — a não ser que o gargalo seja o próprio drive USB. Use `--dry-run` antes para
+  saber com o que você está lidando.
 - **Foco.** Um cérebro treinado com 200 mil MIDIs aleatórios da internet soa
   como a média da internet, não como você. Para o *style model*, 250 clipes
   curados de Melodic House valem mais que 200 mil arquivos genéricos.
@@ -313,8 +314,28 @@ Aí escaneie só o que representa o seu som:
 harmonia-cli scan "/Volumes/HD/Packs/Melodic House" --index ~/melodic.json
 ```
 
-Para catalogar tudo mas aprender só com uma parte, faça dois scans: um amplo com
-`--no-learn` (só o índice, para pesquisa) e um focado que gera o modelo.
+Para catalogar tudo mas aprender só com uma parte, o fluxo é: **um scan, vários
+cérebros**.
+
+```bash
+# 1. indexa o drive inteiro, sem aprender nada (mais rápido)
+harmonia-cli scan /Volumes/KINGSTON --index ~/tudo.json --no-learn
+
+# 2. monta cérebros focados a partir do índice, sem reler o drive
+harmonia-cli learn --index ~/tudo.json --tag "melodic house" --style ~/melodic.style.json
+harmonia-cli learn --index ~/tudo.json --role bass --bpm 120-126 --style ~/bass.style.json
+
+# 3. escolhe qual usar
+harmonia-cli --preset melodic-lift --style ~/melodic.style.json --part bass,melody
+```
+
+O `learn` aceita os mesmos filtros do `library` (`--tag`, `--role`, `--key`,
+`--bpm`, `--contains`, `--min-bars`), então dá para ter um cérebro por gênero,
+por papel, por faixa de andamento — e trocar no plugin conforme a faixa.
+
+O scan usa todos os núcleos da máquina (`--threads` para controlar). O resultado
+é idêntico independente de quantas threads: os arquivos são divididos em blocos
+fixos, não numa fila compartilhada.
 
 ### Onde guardar os MIDIs
 
@@ -459,7 +480,7 @@ core/      motor em C++17, sem dependência nenhuma (nem JUCE)
            MIDI, teoria, análise, geradores, progressões, presets,
            biblioteca e o modelo de estilo
 cli/       front end de linha de comando
-tests/     73 testes unitários do motor
+tests/     76 testes unitários do motor
 plugin/    invólucro JUCE: processador, editor, componentes de UI
            tests/ traz um smoke test headless do plugin
 resources/ clipes MIDI de exemplo

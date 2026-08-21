@@ -19,7 +19,7 @@ whenever the change is not specifically about the plugin UI or its audio thread.
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 
-./build/tests/harmonia_tests              # all 73 tests, ~30ms
+./build/tests/harmonia_tests              # all 76 tests, ~60ms
 ./build/tests/harmonia_tests Progression  # only tests whose name contains this
 ```
 
@@ -107,6 +107,11 @@ say so.
 `saveIndex` streams JSON straight to the file for the same reason - a few
 hundred thousand entries will not fit as a document tree plus a serialised
 string.
+
+Files are parsed across threads, split into one fixed block per thread rather
+than pulled from a shared queue, so the index and the style model come out
+byte-identical whatever `ScanOptions::threads` is. There is a test for that; do
+not replace the blocks with work stealing without replacing that guarantee.
 
 ### Analysis constants are tuned, not derived
 

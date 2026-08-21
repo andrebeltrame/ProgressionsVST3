@@ -177,6 +177,78 @@ TEST(MacOsClutterIsIgnored)
     CHECK_EQ(index.entries.size(), size_t(5));
 }
 
+namespace
+{
+/** Enough files to cross the threshold where the scan splits across threads. */
+struct WideLibrary
+{
+    fs::path root;
+
+    WideLibrary()
+    {
+        root = fs::temp_directory_path() / "harmonia_wide_library";
+        fs::remove_all(root);
+
+        for (int i = 0; i < 40; ++i)
+        {
+            const bool bass = (i % 2) == 0;
+            const auto folder = bass ? "Deep House/Bass" : "Deep House/Pads";
+            const auto path = root / folder / ("clip_" + std::to_string(i) + ".mid");
+            fs::create_directories(path.parent_path());
+
+            const auto clip = bass ? fixtures::bassClip({ 36 + i % 5, 33, 29, 31 })
+                                   : fixtures::chordClip({ { 60 + i % 4, 64, 67 }, { 57, 60, 64 } });
+            std::string error;
+            midi::writeToFile(path.string(), clip, error);
+        }
+    }
+
+    ~WideLibrary()
+    {
+        std::error_code ec;
+        fs::remove_all(root, ec);
+    }
+};
+} // namespace
+
+TEST(ScanningInParallelMatchesScanningSerially)
+{
+    const WideLibrary library;
+
+    ScanOptions serial;
+    serial.threads = 1;
+    StyleModel serialModel;
+    const auto one = scanDirectory(library.root.string(), serial, {}, nullptr, &serialModel);
+
+    ScanOptions parallel;
+    parallel.threads = 4;
+    StyleModel parallelModel;
+    const auto many = scanDirectory(library.root.string(), parallel, {}, nullptr, &parallelModel);
+
+    CHECK_EQ(one.entries.size(), size_t(40));
+    CHECK_EQ(many.entries.size(), one.entries.size());
+    CHECK_EQ(many.stats.indexed, one.stats.indexed);
+
+    // Same clips, same order, same analysis - threads must not show up in the
+    // result at all.
+    for (size_t i = 0; i < one.entries.size() && i < many.entries.size(); ++i)
+    {
+        CHECK_EQ(many.entries[i].relativePath, one.entries[i].relativePath);
+        CHECK_EQ(many.entries[i].progression, one.entries[i].progression);
+        CHECK_EQ(many.entries[i].folderRole, one.entries[i].folderRole);
+        CHECK_EQ(many.entries[i].key.tonic, one.entries[i].key.tonic);
+        CHECK_EQ(many.entries[i].bars, one.entries[i].bars);
+    }
+
+    CHECK_EQ(parallelModel.clipsLearned, serialModel.clipsLearned);
+    CHECK_EQ(parallelModel.barsLearned, serialModel.barsLearned);
+    CHECK_EQ(parallelModel.stepMarginal.size(), serialModel.stepMarginal.size());
+    for (const auto& [step, count] : serialModel.stepMarginal)
+        CHECK_EQ(parallelModel.stepMarginal.at(step), count);
+    for (const auto& [role, bank] : serialModel.patterns)
+        CHECK_EQ(parallelModel.patterns.at(role).size(), bank.size());
+}
+
 TEST(IndexSurvivesSaveAndLoad)
 {
     const TemporaryLibrary library;

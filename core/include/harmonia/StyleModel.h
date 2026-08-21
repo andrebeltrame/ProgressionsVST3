@@ -16,6 +16,7 @@ namespace harmonia
 {
 
 struct LibraryIndex;
+struct LibraryEntry;
 
 /** Which bank of learned material a clip contributes to. */
 enum class StyleRole
@@ -78,6 +79,10 @@ struct StyleModel
     /** Keeps the most common material and drops the long tail, so the model
         stays small no matter how big the drive was. */
     void prune(size_t maxPatternsPerRole = 256, size_t maxVoicings = 128, size_t maxProgressions = 200);
+
+    /** Folds another model's counts into this one, for learning in parallel and
+        joining the results back up. */
+    void merge(const StyleModel& other);
 };
 
 /** Feeds one analysed clip into the model. `roleHint` comes from the folder name
@@ -89,6 +94,12 @@ void learnFromClip(StyleModel& model,
 
 /** Re-reads every file in an index and learns from all of them. */
 StyleModel buildStyleModel(const LibraryIndex& index,
+                           const std::function<void(size_t, size_t)>& progress = {},
+                           std::vector<std::string>* errors = nullptr);
+
+/** Learns from a chosen subset - the result of a library query, say - so one
+    scan of a big drive can produce as many focused models as you like. */
+StyleModel buildStyleModel(const std::vector<const LibraryEntry*>& entries,
                            const std::function<void(size_t, size_t)>& progress = {},
                            std::vector<std::string>* errors = nullptr);
 

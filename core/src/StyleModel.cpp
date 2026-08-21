@@ -390,40 +390,101 @@ void learnFromClip(StyleModel& model,
         ++model.progressions[analysis.romanNumeralString()];
 }
 
-StyleModel buildStyleModel(const LibraryIndex& index,
+void StyleModel::merge(const StyleModel& other)
+{
+    clipsLearned += other.clipsLearned;
+    barsLearned += other.barsLearned;
+
+    for (const auto& [step, count] : other.stepMarginal)
+        stepMarginal[step] += count;
+    for (const auto& [previous, counts] : other.stepTransitions)
+        for (const auto& [step, count] : counts)
+            stepTransitions[previous][step] += count;
+    for (const auto& [interval, count] : other.strongBeatInterval)
+        strongBeatInterval[interval] += count;
+
+    for (size_t slotClass = 0; slotClass < bassIntervalBySlotClass.size(); ++slotClass)
+        for (const auto& [interval, count] : other.bassIntervalBySlotClass[slotClass])
+            bassIntervalBySlotClass[slotClass][interval] += count;
+
+    for (const auto& [role, bank] : other.patterns)
+    {
+        auto& mine = patterns[role];
+        for (const auto& [mask, pattern] : bank)
+        {
+            const auto existing = mine.find(mask);
+            if (existing == mine.end())
+            {
+                mine.emplace(mask, pattern);
+                continue;
+            }
+
+            // Weighted average of the two, so a merge matches what one pass
+            // over the same clips would have produced.
+            auto& into = existing->second;
+            const float total = static_cast<float>(into.count + pattern.count);
+            for (size_t slot = 0; slot < into.velocity.size(); ++slot)
+            {
+                into.velocity[slot] = static_cast<uint8_t>(
+                    (into.velocity[slot] * into.count + pattern.velocity[slot] * pattern.count) / total);
+                into.lengthSlots[slot] = static_cast<uint8_t>(
+                    (into.lengthSlots[slot] * into.count + pattern.lengthSlots[slot] * pattern.count) / total);
+            }
+            into.count += pattern.count;
+        }
+    }
+
+    for (const auto& [intervals, count] : other.voicings)
+        voicings[intervals] += count;
+    for (const auto& [progression, count] : other.progressions)
+        progressions[progression] += count;
+}
+
+StyleModel buildStyleModel(const std::vector<const LibraryEntry*>& entries,
                            const std::function<void(size_t, size_t)>& progress,
                            std::vector<std::string>* errors)
 {
     StyleModel model;
     size_t done = 0;
 
-    for (const auto& entry : index.entries)
+    for (const auto* entry : entries)
     {
         ++done;
         if (progress)
-            progress(done, index.entries.size());
+            progress(done, entries.size());
 
-        if (entry.drums)
+        if (entry == nullptr || entry->drums)
             continue;
 
         NoteSequence sequence;
         std::string error;
-        if (! midi::readFromFile(entry.path, sequence, error))
+        if (! midi::readFromFile(entry->path, sequence, error))
         {
             if (errors != nullptr)
-                errors->push_back(entry.relativePath + ": " + error);
+                errors->push_back(entry->relativePath + ": " + error);
             continue;
         }
 
-        learnFromClip(model, sequence, analyze(sequence), entry.folderRole);
+        learnFromClip(model, sequence, analyze(sequence), entry->folderRole);
 
-        // Keep memory bounded while walking a very large drive.
+        // Keep memory bounded while working through a very large collection.
         if ((done % 500) == 0)
             model.prune(1024, 512, 800);
     }
 
     model.prune();
     return model;
+}
+
+StyleModel buildStyleModel(const LibraryIndex& index,
+                           const std::function<void(size_t, size_t)>& progress,
+                           std::vector<std::string>* errors)
+{
+    std::vector<const LibraryEntry*> entries;
+    entries.reserve(index.entries.size());
+    for (const auto& entry : index.entries)
+        entries.push_back(&entry);
+    return buildStyleModel(entries, progress, errors);
 }
 
 // ---------------------------------------------------------------------------

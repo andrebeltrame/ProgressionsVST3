@@ -80,6 +80,9 @@ struct ScanOptions
     bool followSymlinks = false;
     /** Count what is there without opening anything. */
     bool dryRun = false;
+    /** How many files to read at once. 0 picks one per core. Files are split
+        into fixed blocks, so the result does not depend on thread timing. */
+    unsigned threads = 0;
 };
 
 /** Walks a folder tree, analyses every .mid it finds and returns the index.

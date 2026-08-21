@@ -11,7 +11,10 @@
 #include <fstream>
 #include <iomanip>
 #include <map>
+#include <atomic>
+#include <mutex>
 #include <set>
+#include <thread>
 
 namespace fs = std::filesystem;
 
@@ -337,64 +340,144 @@ LibraryIndex scanDirectory(const std::string& root,
     if (options.dryRun)
         return index;
 
-    size_t done = 0;
-    for (const auto& file : files)
+    // Reading and analysing files is the slow part of a big drive and every
+    // file is independent, so split the list into one fixed block per thread.
+    // Fixed blocks rather than a shared queue keeps the output identical from
+    // run to run.
+    const unsigned threadCount = std::max(1u, options.threads > 0
+                                                  ? options.threads
+                                                  : std::thread::hardware_concurrency());
+
+    struct Slot
     {
-        const auto relative = fs::relative(file, rootPath, ec).string();
-        ++done;
-        if (progress)
-            progress(relative, done, files.size());
-
-        NoteSequence sequence;
-        std::string error;
-        if (! midi::readFromFile(file.string(), sequence, error))
-        {
-            ++stats.unreadable;
-            if (errors != nullptr)
-                errors->push_back(relative + ": " + error);
-            continue;
-        }
-
         LibraryEntry entry;
-        entry.path = file.string();
-        entry.relativePath = relative;
-        entry.name = file.stem().string();
-        entry.tags = tagsFromRelativePath(fs::path(relative));
-        entry.drums = looksLikeDrums(sequence);
-        entry.folderRole = roleForPath(relative);
-        if (entry.folderRole == "drums")
-            entry.drums = true;
+        bool valid = false;
+    };
 
-        if (options.skipDrums && entry.drums)
+    struct Partial
+    {
+        StyleModel model;
+        std::vector<std::string> errors;
+        size_t unreadable = 0;
+        size_t skippedDrums = 0;
+    };
+
+    std::vector<Slot> slots(files.size());
+    std::vector<Partial> partials(threadCount);
+    std::atomic<size_t> completed { 0 };
+    std::mutex progressMutex;
+
+    const auto processRange = [&](unsigned threadIndex, size_t from, size_t to)
+    {
+        auto& partial = partials[threadIndex];
+
+        for (size_t i = from; i < to; ++i)
         {
-            ++stats.skippedDrums;
+            const auto& file = files[i];
+            std::error_code relativeEc;
+            const auto relative = fs::relative(file, rootPath, relativeEc).string();
+
+            if (progress)
+            {
+                const size_t at = completed.fetch_add(1) + 1;
+                const std::lock_guard<std::mutex> lock(progressMutex);
+                progress(relative, at, files.size());
+            }
+            else
+            {
+                completed.fetch_add(1);
+            }
+
+            NoteSequence sequence;
+            std::string error;
+            if (! midi::readFromFile(file.string(), sequence, error))
+            {
+                ++partial.unreadable;
+                partial.errors.push_back(relative + ": " + error);
+                continue;
+            }
+
+            LibraryEntry entry;
+            entry.path = file.string();
+            entry.relativePath = relative;
+            entry.name = file.stem().string();
+            entry.tags = tagsFromRelativePath(fs::path(relative));
+            entry.drums = looksLikeDrums(sequence);
+            entry.folderRole = roleForPath(relative);
+            if (entry.folderRole == "drums")
+                entry.drums = true;
+
+            if (options.skipDrums && entry.drums)
+            {
+                ++partial.skippedDrums;
+                continue;
+            }
+
+            const auto analysis = analyze(sequence);
+            entry.role = analysis.role;
+            entry.key = analysis.key;
+            entry.keyConfidence = analysis.keyConfidence;
+            entry.bpm = analysis.bpm;
+            entry.bars = analysis.bars;
+            entry.noteCount = static_cast<int>(sequence.notes.size());
+            entry.rhythm = analysis.rhythm;
+            if (! entry.drums && analysis.valid)
+            {
+                entry.progression = analysis.progressionString();
+                entry.roman = analysis.romanNumeralString();
+            }
+
+            if (styleModel != nullptr && ! entry.drums)
+            {
+                learnFromClip(partial.model, sequence, analysis, entry.folderRole);
+                if (((i - from) % 500) == 499)
+                    partial.model.prune(1024, 512, 800);
+            }
+
+            slots[i].entry = std::move(entry);
+            slots[i].valid = true;
+        }
+    };
+
+    if (threadCount <= 1 || files.size() < 32)
+    {
+        processRange(0, 0, files.size());
+    }
+    else
+    {
+        std::vector<std::thread> workers;
+        workers.reserve(threadCount);
+        for (unsigned t = 0; t < threadCount; ++t)
+        {
+            const size_t from = files.size() * t / threadCount;
+            const size_t to = files.size() * (t + 1) / threadCount;
+            workers.emplace_back(processRange, t, from, to);
+        }
+        for (auto& worker : workers)
+            worker.join();
+    }
+
+    // Join the blocks back together in file order.
+    index.entries.reserve(files.size());
+    for (auto& slot : slots)
+    {
+        if (! slot.valid)
             continue;
-        }
-
-        const auto analysis = analyze(sequence);
-        entry.role = analysis.role;
-        entry.key = analysis.key;
-        entry.keyConfidence = analysis.keyConfidence;
-        entry.bpm = analysis.bpm;
-        entry.bars = analysis.bars;
-        entry.noteCount = static_cast<int>(sequence.notes.size());
-        entry.rhythm = analysis.rhythm;
-        if (! entry.drums && analysis.valid)
-        {
-            entry.progression = analysis.progressionString();
-            entry.roman = analysis.romanNumeralString();
-        }
-
-        if (styleModel != nullptr && ! entry.drums)
-        {
-            learnFromClip(*styleModel, sequence, analysis, entry.folderRole);
-            if ((done % 500) == 0)
-                styleModel->prune(1024, 512, 800);
-        }
-
-        index.entries.push_back(std::move(entry));
+        index.entries.push_back(std::move(slot.entry));
         ++stats.indexed;
     }
+
+    for (auto& partial : partials)
+    {
+        stats.unreadable += partial.unreadable;
+        stats.skippedDrums += partial.skippedDrums;
+        if (errors != nullptr)
+            errors->insert(errors->end(), partial.errors.begin(), partial.errors.end());
+        if (styleModel != nullptr)
+            styleModel->merge(partial.model);
+    }
+    if (errors != nullptr)
+        std::sort(errors->begin(), errors->end());
 
     if (styleModel != nullptr)
         styleModel->prune();
