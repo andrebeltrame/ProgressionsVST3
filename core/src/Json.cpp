@@ -357,6 +357,14 @@ std::string Value::toString(int indent) const
     return out;
 }
 
+std::string quoted(const std::string& text)
+{
+    std::string out;
+    out.reserve(text.size() + 2);
+    writeEscaped(out, text);
+    return out;
+}
+
 bool parse(const std::string& text, Value& out, std::string& error)
 {
     Parser parser(text);

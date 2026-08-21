@@ -19,7 +19,7 @@ whenever the change is not specifically about the plugin UI or its audio thread.
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 
-./build/tests/harmonia_tests              # all 70 tests, ~30ms
+./build/tests/harmonia_tests              # all 72 tests, ~30ms
 ./build/tests/harmonia_tests Progression  # only tests whose name contains this
 ```
 
@@ -93,6 +93,20 @@ Same seed plus same `GenerateOptions` must always produce byte-identical MIDI.
 The plugin stores the seed in its state rather than the notes, and the CLI's
 `--seed` is the whole reproducibility story. Any randomness added to a generator
 has to go through `Context::rng`; never `rand()`, a clock, or an address.
+
+### The library walk has to survive a real drive
+
+`scanDirectory` walks with an explicit stack of folders, not
+`recursive_directory_iterator` - that iterator becomes `end()` the moment any
+increment fails, so a single folder macOS refuses (`.Spotlight-V100` returns
+EPERM, which `skip_permission_denied` does not cover) silently ended the scan of
+an entire drive and looked like a small collection. Keep the per-folder
+isolation, and keep reporting `walkErrors`: a scan that skipped something must
+say so.
+
+`saveIndex` streams JSON straight to the file for the same reason - a few
+hundred thousand entries will not fit as a document tree plus a serialised
+string.
 
 ### Analysis constants are tuned, not derived
 

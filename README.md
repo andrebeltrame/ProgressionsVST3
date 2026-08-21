@@ -284,6 +284,26 @@ pude testar é como soa com MIDI de house de verdade, porque o seu HD não está
 aqui. É bem possível que a dosagem precise de ajuste depois do primeiro contato
 com material real — me diga o que sair.
 
+### Coleções muito grandes
+
+Um arquivo de MIDIs baixado da internet pode ter centenas de milhares de
+arquivos. Duas coisas para saber antes de apontar o scan para um desses:
+
+- **Tempo.** Loops curtos são instantâneos; arranjos completos custam uns 30 ms
+  cada. Uma coleção de 200 mil músicas inteiras leva horas. Use `--dry-run`
+  antes para saber com o que você está lidando.
+- **Foco.** Um cérebro treinado com 200 mil MIDIs aleatórios da internet soa
+  como a média da internet, não como você. Para o *style model*, 250 clipes
+  curados de Melodic House valem mais que 200 mil arquivos genéricos. Escaneie
+  as pastas que representam o seu som:
+
+```bash
+harmonia-cli scan "/Volumes/HD/Packs/Melodic House" --index ~/melodic.json
+```
+
+Para catalogar tudo mas aprender só com uma parte, faça dois scans: um amplo com
+`--no-learn` (só o índice, para pesquisa) e um focado que gera o modelo.
+
 ### Onde guardar os MIDIs
 
 Recomendo **deixar os arquivos no HD e versionar só o índice**: ele é um JSON de
@@ -427,7 +447,7 @@ core/      motor em C++17, sem dependência nenhuma (nem JUCE)
            MIDI, teoria, análise, geradores, progressões, presets,
            biblioteca e o modelo de estilo
 cli/       front end de linha de comando
-tests/     70 testes unitários do motor
+tests/     72 testes unitários do motor
 plugin/    invólucro JUCE: processador, editor, componentes de UI
            tests/ traz um smoke test headless do plugin
 resources/ clipes MIDI de exemplo

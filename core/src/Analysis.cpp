@@ -359,24 +359,35 @@ RhythmProfile buildRhythmProfile(const NoteSequence& sequence, const TimeSignatu
     profile.averageVelocity = static_cast<float>(velocitySum / noteCount);
     profile.syncopation = totalWeight > 0.0f ? offGridWeight / totalWeight : 0.0f;
 
-    // Mean polyphony, sampled on a 16th grid over the sounding region.
-    int64_t sampled = 0;
+    // Mean polyphony, sampled on a 16th grid. Walking a sorted event list keeps
+    // this linear; scanning every note at every slot does not survive a clip
+    // with thousands of notes.
+    std::vector<std::pair<int64_t, int>> events;
+    events.reserve(sequence.notes.size() * 2);
+    for (const auto& n : sequence.notes)
+    {
+        events.emplace_back(n.startTick, 1);
+        events.emplace_back(n.endTick(), -1);
+    }
+    std::sort(events.begin(), events.end());
+
     int64_t sounding = 0;
     int64_t occupied = 0;
+    int active = 0;
+    size_t nextEvent = 0;
+
     for (int64_t t = 0; t < totalTicks; t += slotTicks)
     {
-        int count = 0;
-        for (const auto& n : sequence.notes)
-            if (n.startTick <= t && t < n.endTick())
-                ++count;
-        ++sampled;
-        if (count > 0)
+        while (nextEvent < events.size() && events[nextEvent].first <= t)
+            active += events[nextEvent++].second;
+
+        if (active > 0)
         {
             ++occupied;
-            sounding += count;
+            sounding += active;
         }
     }
-    (void) sampled;
+
     profile.polyphony = occupied > 0 ? static_cast<float>(sounding) / static_cast<float>(occupied) : 1.0f;
     profile.monophonic = profile.polyphony < 1.2f;
 
@@ -590,6 +601,24 @@ Analysis analyze(const NoteSequence& sequence, const AnalysisOptions& options)
         const float changeCost = options.chordChangePenalty * changePenaltyScale
                                * (onBarLine ? 0.45f : (onHalfBar ? 0.75f : 1.0f));
 
+        // Switching costs the same from wherever you came, so the best
+        // predecessor of any state is either that state itself or whichever
+        // state led the previous frame. Finding that leader once per frame
+        // turns an O(states^2) inner loop into O(states).
+        int leader = 0;
+        float leaderScore = -1e9f;
+        if (f > 0)
+        {
+            for (int p = 0; p < stateCount; ++p)
+            {
+                if (previousScores[static_cast<size_t>(p)] > leaderScore)
+                {
+                    leaderScore = previousScores[static_cast<size_t>(p)];
+                    leader = p;
+                }
+            }
+        }
+
         for (int s = 0; s < stateCount; ++s)
         {
             float best = emissions[static_cast<size_t>(f)][static_cast<size_t>(s)];
@@ -597,17 +626,18 @@ Analysis analyze(const NoteSequence& sequence, const AnalysisOptions& options)
 
             if (f > 0)
             {
-                float bestPrevious = -1e9f;
-                for (int p = 0; p < stateCount; ++p)
+                const float stay = previousScores[static_cast<size_t>(s)];
+                const float move = leaderScore - changeCost;
+
+                if (move > stay || (move == stay && leader < s))
                 {
-                    const float value = previousScores[static_cast<size_t>(p)] - (p == s ? 0.0f : changeCost);
-                    if (value > bestPrevious)
-                    {
-                        bestPrevious = value;
-                        bestFrom = p;
-                    }
+                    best += move;
+                    bestFrom = leader;
                 }
-                best += bestPrevious;
+                else
+                {
+                    best += stay;
+                }
             }
 
             currentScores[static_cast<size_t>(s)] = best;

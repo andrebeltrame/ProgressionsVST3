@@ -9,7 +9,9 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <map>
+#include <set>
 
 namespace fs = std::filesystem;
 
@@ -223,11 +225,6 @@ LibraryIndex scanDirectory(const std::string& root,
     const auto collect = [&files, &stats](const fs::directory_entry& entry)
     {
         std::error_code entryEc;
-        if (entry.is_directory(entryEc) && ! entryEc)
-        {
-            ++stats.directoriesVisited;
-            return;
-        }
         if (! entry.is_regular_file(entryEc) || entryEc)
             return;
 
@@ -250,46 +247,76 @@ LibraryIndex scanDirectory(const std::string& root,
         }
     };
 
-    auto walkOptions = fs::directory_options::skip_permission_denied;
-    if (options.followSymlinks)
-        walkOptions |= fs::directory_options::follow_directory_symlink;
+    // Walk with an explicit stack of folders rather than
+    // recursive_directory_iterator: that iterator becomes end() as soon as any
+    // increment fails, so one folder macOS refuses (.Spotlight-V100 returns
+    // EPERM, which skip_permission_denied does not cover) silently ends the
+    // scan of the whole drive. Here a folder we cannot read costs that folder
+    // and nothing else.
+    std::vector<fs::path> pending { rootPath };
 
-    if (options.recursive)
+    // Only needed when chasing symlinks, where the same folder can be reached
+    // by more than one path - including a link that points back up the tree.
+    std::set<std::string> visited;
+    if (options.followSymlinks)
     {
-        for (auto it = fs::recursive_directory_iterator(rootPath, walkOptions, ec);
-             it != fs::recursive_directory_iterator();)
-        {
-            if (ec)
-            {
-                ++stats.walkErrors;
-                ec.clear();
-            }
-            else
-            {
-                std::error_code dirEc;
-                if (it->is_directory(dirEc) && ! dirEc && isSystemName(it->path().filename().string()))
-                    it.disable_recursion_pending(); // do not descend into .Trashes and friends
-                else
-                    collect(*it);
-            }
-            it.increment(ec);
-        }
+        std::error_code rootEc;
+        const auto resolvedRoot = fs::canonical(rootPath, rootEc);
+        if (! rootEc)
+            visited.insert(resolvedRoot.string());
     }
-    else
+
+    while (! pending.empty())
     {
-        for (auto it = fs::directory_iterator(rootPath, walkOptions, ec);
-             it != fs::directory_iterator();)
+        const fs::path directory = pending.back();
+        pending.pop_back();
+
+        std::error_code dirEc;
+        fs::directory_iterator it(directory, fs::directory_options::skip_permission_denied, dirEc);
+        if (dirEc)
         {
-            if (ec)
+            ++stats.walkErrors;
+            continue;
+        }
+
+        for (; it != fs::directory_iterator(); it.increment(dirEc))
+        {
+            if (dirEc)
             {
+                // Give up on this folder, keep the rest of the drive.
                 ++stats.walkErrors;
-                ec.clear();
+                break;
             }
-            else
+
+            const auto& entry = *it;
+            const auto name = entry.path().filename().string();
+
+            std::error_code kindEc;
+            if (entry.is_directory(kindEc) && ! kindEc)
             {
-                collect(*it);
+                ++stats.directoriesVisited;
+                if (! options.recursive || isSystemName(name))
+                    continue;
+
+                std::error_code linkEc;
+                if (options.followSymlinks)
+                {
+                    // Dedupe by real path, so a link pointing back up the tree
+                    // is walked once instead of forever.
+                    const auto resolved = fs::canonical(entry.path(), linkEc);
+                    if (linkEc || ! visited.insert(resolved.string()).second)
+                        continue;
+                }
+                else if (entry.is_symlink(linkEc) && ! linkEc)
+                {
+                    continue;
+                }
+
+                pending.push_back(entry.path());
+                continue;
             }
-            it.increment(ec);
+
+            collect(entry);
         }
     }
 
@@ -370,58 +397,68 @@ LibraryIndex scanDirectory(const std::string& root,
 
 bool saveIndex(const std::string& path, const LibraryIndex& index, std::string& error)
 {
-    auto root = json::Value::object();
-    root.set("version", json::Value(1));
-    root.set("root", json::Value(index.root));
-
-    auto entries = json::Value::array();
-    for (const auto& entry : index.entries)
-    {
-        auto item = json::Value::object();
-        item.set("path", json::Value(entry.path));
-        item.set("relative", json::Value(entry.relativePath));
-        item.set("name", json::Value(entry.name));
-
-        auto tags = json::Value::array();
-        for (const auto& tag : entry.tags)
-            tags.push(json::Value(tag));
-        item.set("tags", tags);
-
-        item.set("folderRole", json::Value(entry.folderRole));
-        item.set("role", json::Value(std::string(toString(entry.role))));
-        item.set("drums", json::Value(entry.drums));
-        item.set("tonic", json::Value(entry.key.tonic));
-        item.set("scale", json::Value(std::string(toString(entry.key.scale))));
-        item.set("keyConfidence", json::Value(static_cast<double>(entry.keyConfidence)));
-        item.set("bpm", json::Value(entry.bpm));
-        item.set("bars", json::Value(entry.bars));
-        item.set("notes", json::Value(entry.noteCount));
-        item.set("progression", json::Value(entry.progression));
-        item.set("roman", json::Value(entry.roman));
-
-        auto rhythm = json::Value::object();
-        rhythm.set("notesPerBar", json::Value(static_cast<double>(entry.rhythm.notesPerBar)));
-        rhythm.set("averageLengthBeats", json::Value(static_cast<double>(entry.rhythm.averageLengthBeats)));
-        rhythm.set("averageVelocity", json::Value(static_cast<double>(entry.rhythm.averageVelocity)));
-        rhythm.set("syncopation", json::Value(static_cast<double>(entry.rhythm.syncopation)));
-        rhythm.set("polyphony", json::Value(static_cast<double>(entry.rhythm.polyphony)));
-        rhythm.set("lowestPitch", json::Value(entry.rhythm.lowestPitch));
-        rhythm.set("highestPitch", json::Value(entry.rhythm.highestPitch));
-        rhythm.set("monophonic", json::Value(entry.rhythm.monophonic));
-        rhythm.set("grid", gridToJson(entry.rhythm));
-        item.set("rhythm", rhythm);
-
-        entries.push(std::move(item));
-    }
-    root.set("entries", std::move(entries));
-
+    // Streamed rather than built as one document: a drive with a few hundred
+    // thousand clips would need gigabytes to hold the tree and the string.
     std::ofstream stream(path);
     if (! stream)
     {
         error = "Could not write '" + path + "'.";
         return false;
     }
-    stream << root.toString(1);
+
+    const auto quote = [](const std::string& text) { return json::quoted(text); };
+
+    stream << "{\n \"version\": 1,\n \"root\": " << quote(index.root) << ",\n \"entries\": [";
+
+    bool first = true;
+    for (const auto& entry : index.entries)
+    {
+        stream << (first ? "\n  " : ",\n  ") << "{";
+        first = false;
+
+        stream << "\"path\": " << quote(entry.path)
+               << ", \"relative\": " << quote(entry.relativePath)
+               << ", \"name\": " << quote(entry.name)
+               << ", \"tags\": [";
+        for (size_t i = 0; i < entry.tags.size(); ++i)
+            stream << (i > 0 ? ", " : "") << quote(entry.tags[i]);
+        stream << "]"
+               << ", \"folderRole\": " << quote(entry.folderRole)
+               << ", \"role\": " << quote(toString(entry.role))
+               << ", \"drums\": " << (entry.drums ? "true" : "false")
+               << ", \"tonic\": " << entry.key.tonic
+               << ", \"scale\": " << quote(toString(entry.key.scale))
+               << ", \"keyConfidence\": " << std::setprecision(3) << entry.keyConfidence
+               << ", \"bpm\": " << std::setprecision(5) << entry.bpm
+               << ", \"bars\": " << entry.bars
+               << ", \"notes\": " << entry.noteCount
+               << ", \"progression\": " << quote(entry.progression)
+               << ", \"roman\": " << quote(entry.roman);
+
+        const auto& rhythm = entry.rhythm;
+        stream << ", \"rhythm\": {"
+               << "\"notesPerBar\": " << std::setprecision(4) << rhythm.notesPerBar
+               << ", \"averageLengthBeats\": " << rhythm.averageLengthBeats
+               << ", \"averageVelocity\": " << rhythm.averageVelocity
+               << ", \"syncopation\": " << rhythm.syncopation
+               << ", \"polyphony\": " << rhythm.polyphony
+               << ", \"lowestPitch\": " << rhythm.lowestPitch
+               << ", \"highestPitch\": " << rhythm.highestPitch
+               << ", \"monophonic\": " << (rhythm.monophonic ? "true" : "false")
+               << ", \"grid\": [";
+        for (size_t i = 0; i < rhythm.grid.size(); ++i)
+            stream << (i > 0 ? ", " : "") << std::setprecision(3)
+                   << std::round(rhythm.grid[i] * 1000.0f) / 1000.0f;
+        stream << "]}}";
+
+        if (! stream)
+        {
+            error = "Failed while writing '" + path + "'.";
+            return false;
+        }
+    }
+
+    stream << (index.entries.empty() ? "" : "\n ") << "]\n}\n";
     if (! stream.good())
     {
         error = "Failed while writing '" + path + "'.";

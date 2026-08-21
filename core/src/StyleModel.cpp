@@ -240,16 +240,24 @@ void learnFromClip(StyleModel& model,
     ++model.clipsLearned;
 
     // ---- One rhythm pattern per bar -----------------------------------------
+    // Bucket the notes once instead of rescanning the whole clip for every bar;
+    // a long arrangement would otherwise cost bars x notes.
+    std::vector<std::vector<const Note*>> notesByBar(static_cast<size_t>(bars));
+    for (const auto& note : sequence.notes)
+    {
+        const auto bar = note.startTick / barTicks;
+        if (bar >= 0 && bar < bars)
+            notesByBar[static_cast<size_t>(bar)].push_back(&note);
+    }
+
     for (int bar = 0; bar < bars; ++bar)
     {
         const int64_t barStart = static_cast<int64_t>(bar) * barTicks;
         RhythmPattern pattern;
 
-        for (const auto& note : sequence.notes)
+        for (const auto* notePtr : notesByBar[static_cast<size_t>(bar)])
         {
-            if (note.startTick < barStart || note.startTick >= barStart + barTicks)
-                continue;
-
+            const auto& note = *notePtr;
             const int slot = static_cast<int>(std::clamp<int64_t>((note.startTick - barStart + slotTicks / 2) / slotTicks,
                                                                   0, 15));
             const auto velocity = static_cast<uint8_t>(std::clamp(note.velocity, 1, 127));
@@ -329,12 +337,24 @@ void learnFromClip(StyleModel& model,
     // ---- Voicings --------------------------------------------------------------
     if (! analysis.rhythm.monophonic)
     {
+        // A handful of voicings says everything a whole arrangement would, and
+        // sampling the lot costs segments x notes.
+        constexpr size_t kMaxVoicingSamples = 64;
+        size_t sampled = 0;
+
         for (const auto& segment : analysis.progression)
         {
+            if (++sampled > kMaxVoicingSamples)
+                break;
+
             std::vector<int> sounding;
             for (const auto& note : sequence.notes)
-                if (note.startTick <= segment.startTick + slotTicks && note.endTick() > segment.startTick)
+            {
+                if (note.startTick > segment.startTick + slotTicks)
+                    break; // notes are sorted, nothing later can overlap the start
+                if (note.endTick() > segment.startTick)
                     sounding.push_back(note.pitch);
+            }
 
             std::sort(sounding.begin(), sounding.end());
             sounding.erase(std::unique(sounding.begin(), sounding.end()), sounding.end());

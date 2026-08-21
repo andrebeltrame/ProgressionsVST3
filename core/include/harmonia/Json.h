@@ -61,4 +61,8 @@ private:
 /** Returns false and fills `error` when the text is not valid JSON. */
 bool parse(const std::string& text, Value& out, std::string& error);
 
+/** A quoted, escaped JSON string. For writers that stream straight to a file
+    instead of building a whole document in memory first. */
+std::string quoted(const std::string& text);
+
 } // namespace harmonia::json

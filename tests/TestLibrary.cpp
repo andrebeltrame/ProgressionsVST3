@@ -326,6 +326,44 @@ TEST(DryRunCountsWithoutReading)
     CHECK_EQ(index.stats.unreadable, size_t(0));
 }
 
+TEST(OneUnreadableFolderDoesNotEndTheScan)
+{
+    const TemporaryLibrary library;
+
+    // A folder the process cannot list, sitting between the readable ones.
+    const auto locked = library.root / "Locked";
+    fs::create_directories(locked);
+    std::error_code ec;
+    fs::permissions(locked, fs::perms::none, ec);
+
+    const auto index = scanDirectory(library.root.string(), {}, {}, nullptr);
+    fs::permissions(locked, fs::perms::owner_all, ec); // so the fixture can clean up
+
+    // Everything outside the locked folder is still there. A walk that gave up
+    // on the first refusal would return whatever it happened to reach first.
+    CHECK_EQ(index.entries.size(), size_t(5));
+    CHECK(entryEndingWith(index, "deep_bass_01.mid") != nullptr);
+    CHECK(entryEndingWith(index, "pluck_seq.mid") != nullptr);
+    CHECK(entryEndingWith(index, "groove.mid") != nullptr);
+}
+
+TEST(SymlinkLoopsDoNotHangTheScan)
+{
+    const TemporaryLibrary library;
+
+    std::error_code ec;
+    fs::create_directory_symlink(library.root, library.root / "Deep House" / "loop_back", ec);
+    if (ec)
+        return; // the filesystem will not make symlinks; nothing to prove here
+
+    ScanOptions options;
+    options.followSymlinks = true;
+    const auto index = scanDirectory(library.root.string(), options, {}, nullptr);
+
+    // It terminates, and the clip behind the loop is counted once.
+    CHECK_EQ(index.entries.size(), size_t(5));
+}
+
 TEST(ScanOptionsAreRespected)
 {
     const TemporaryLibrary library;
