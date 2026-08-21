@@ -174,6 +174,21 @@ paths and has to be changed with it.
 The plugin smoke test points `HARMONIA_STYLE_DIR` at a temp folder before it
 constructs anything - without that it would overwrite a real installation.
 
+### Scanning happens in the plugin, and has to be interruptible
+
+`plugin/Source/LibraryScan.cpp` runs `scanDirectory` on a low-priority
+`juce::Thread` so a producer never has to open a terminal to give the plugin a
+brain. Two `ScanOptions` fields exist for it and matter: `keepEntries = false`,
+because a quarter of a million `LibraryEntry` objects is hundreds of megabytes
+to hold inside a host for a model that is a few hundred KB, and `shouldStop`,
+polled in the walk and before every file — it is called from every worker
+thread at once, so it must only read an atomic.
+
+The processor finishes the scan from a `juce::Timer` calling
+`pollLibraryScan()`. That step is public because the smoke test has no message
+loop (`JUCE_MODAL_LOOPS_PERMITTED=0` rules out `runDispatchLoopUntil`) and
+drives it directly.
+
 ### The VST3 manifest stays off
 
 `VST3_AUTO_MANIFEST FALSE` is not a style choice. JUCE writes

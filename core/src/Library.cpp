@@ -293,6 +293,12 @@ LibraryIndex scanDirectory(const std::string& root,
 
     while (! pending.empty())
     {
+        if (options.shouldStop && options.shouldStop())
+        {
+            stats.cancelled = true;
+            break;
+        }
+
         const auto [directory, topFolder] = pending.back();
         pending.pop_back();
         currentTopFolder = topFolder;
@@ -376,9 +382,12 @@ LibraryIndex scanDirectory(const std::string& root,
         std::vector<std::string> errors;
         size_t unreadable = 0;
         size_t skippedDrums = 0;
+        size_t indexed = 0;
     };
 
-    std::vector<Slot> slots(files.size());
+    // Nothing to hold when the caller only wants the style model.
+    std::vector<Slot> slots(options.keepEntries ? files.size() : 0);
+    std::atomic<bool> cancelled { false };
     std::vector<Partial> partials(threadCount);
     std::atomic<size_t> completed { 0 };
     std::mutex progressMutex;
@@ -389,6 +398,12 @@ LibraryIndex scanDirectory(const std::string& root,
 
         for (size_t i = from; i < to; ++i)
         {
+            if (options.shouldStop && options.shouldStop())
+            {
+                cancelled.store(true);
+                return;
+            }
+
             const auto& file = files[i];
             std::error_code relativeEc;
             const auto relative = fs::relative(file, rootPath, relativeEc).string();
@@ -450,8 +465,12 @@ LibraryIndex scanDirectory(const std::string& root,
                     partial.model.prune(1024, 512, 800);
             }
 
-            slots[i].entry = std::move(entry);
-            slots[i].valid = true;
+            ++partial.indexed;
+            if (options.keepEntries)
+            {
+                slots[i].entry = std::move(entry);
+                slots[i].valid = true;
+            }
         }
     };
 
@@ -474,17 +493,20 @@ LibraryIndex scanDirectory(const std::string& root,
     }
 
     // Join the blocks back together in file order.
-    index.entries.reserve(files.size());
+    index.entries.reserve(slots.size());
     for (auto& slot : slots)
     {
         if (! slot.valid)
             continue;
         index.entries.push_back(std::move(slot.entry));
-        ++stats.indexed;
     }
+
+    if (cancelled.load())
+        stats.cancelled = true;
 
     for (auto& partial : partials)
     {
+        stats.indexed += partial.indexed;
         stats.unreadable += partial.unreadable;
         stats.skippedDrums += partial.skippedDrums;
         if (errors != nullptr)

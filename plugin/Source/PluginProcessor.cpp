@@ -520,6 +520,129 @@ juce::String ProgressionsProcessor::styleSummary() const
     return styleModel.empty() ? juce::String() : juce::String(styleModel.summary());
 }
 
+// ---------------------------------------------------------------------------
+// Learning straight from a folder on disk
+
+bool ProgressionsProcessor::startLibraryScan(const juce::File& folder)
+{
+    if (scan != nullptr || ! folder.isDirectory())
+        return false;
+
+    scanSummary.clear();
+    lastError.clear();
+    scan = std::make_unique<LibraryScan>(folder);
+    scan->start();
+    startTimer(200);
+    sendChangeMessage();
+    return true;
+}
+
+void ProgressionsProcessor::cancelLibraryScan()
+{
+    if (scan != nullptr)
+        scan->cancel();
+}
+
+bool ProgressionsProcessor::libraryScanCounting() const
+{
+    return scan != nullptr && scan->counting();
+}
+
+int ProgressionsProcessor::libraryScanDone() const
+{
+    return scan != nullptr ? scan->filesDone() : 0;
+}
+
+int ProgressionsProcessor::libraryScanTotal() const
+{
+    return scan != nullptr ? scan->filesTotal() : 0;
+}
+
+juce::File ProgressionsProcessor::libraryScanFolder() const
+{
+    return scan != nullptr ? scan->folder() : juce::File();
+}
+
+void ProgressionsProcessor::timerCallback()
+{
+    pollLibraryScan();
+}
+
+bool ProgressionsProcessor::pollLibraryScan()
+{
+    if (scan == nullptr || ! scan->finished())
+        return false;
+
+    stopTimer();
+    const auto done = std::move(scan);
+    scan.reset();
+
+    const auto& stats = done->stats();
+    const auto learned = done->result();
+
+    if (learned.empty())
+    {
+        scanSummary = stats.midiFilesFound == 0
+                          ? "No MIDI files in " + done->folder().getFileName()
+                          : "Nothing could be read in " + done->folder().getFileName();
+        lastError = scanSummary.toStdString();
+        sendChangeMessage();
+        return true;
+    }
+
+    styleModel = learned;
+    styleOrigin = StyleSource::Session;
+    styleFile = juce::File();
+
+    juce::String installError;
+    if (styleStore::installModel(styleModel, installError))
+    {
+        styleFile = styleStore::installedFile();
+        styleOrigin = StyleSource::Installed;
+    }
+    else
+    {
+        lastError = "Learned, but could not keep it in the plugin: " + installError.toStdString();
+    }
+
+    scanSummary = juce::String(styleModel.clipsLearned) + " clips learned from "
+                      + juce::String(static_cast<int>(stats.midiFilesFound)) + " files";
+    if (stats.cancelled)
+        scanSummary += " (stopped early)";
+    if (stats.walkErrors > 0)
+        scanSummary += ", " + juce::String(static_cast<int>(stats.walkErrors)) + " folders unreadable";
+
+    regenerate();
+    sendChangeMessage();
+    return true;
+}
+
+juce::Array<juce::File> ProgressionsProcessor::suggestedLibraryFolders()
+{
+    juce::Array<juce::File> found;
+
+    const auto add = [&found](const juce::File& file)
+    {
+        if (file.isDirectory() && ! found.contains(file))
+            found.add(file);
+    };
+
+    const auto home = juce::File::getSpecialLocation(juce::File::userHomeDirectory);
+    add(home.getChildFile("Music/Ableton/User Library"));
+    add(home.getChildFile("Documents/Ableton"));
+    add(juce::File::getSpecialLocation(juce::File::userMusicDirectory));
+    add(home.getChildFile("Documents"));
+
+   #if JUCE_MAC
+    // External drives, which is where a collection this size usually lives.
+    for (const auto& volume : juce::File("/Volumes").findChildFiles(juce::File::findDirectories, false))
+        if (! volume.isSymbolicLink())
+            add(volume);
+   #endif
+
+    return found;
+}
+
 juce::String ProgressionsProcessor::styleSourceText() const
 {
     switch (styleOrigin)

@@ -8,6 +8,7 @@
 #include "PluginProcessor.h"
 #include "StyleStore.h"
 
+#include "harmonia/MidiFile.h"
 #include "harmonia/StyleModel.h"
 
 #include <cstdlib>
@@ -284,6 +285,66 @@ int main(int argc, char** argv)
               "and falls back to whatever is baked into the build");
 
         check(processor.loadStyleModelFile(modelFile), "and it can be installed again");
+    }
+
+    // ---- Learning straight from a folder on disk ---------------------------
+    {
+        // The whole point of the plugin having a brain: point it at a folder,
+        // get a model, no terminal involved.
+        const auto libraryFolder = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                       .getChildFile("progressions_smoke_library");
+        libraryFolder.deleteRecursively();
+        libraryFolder.getChildFile("Bass").createDirectory();
+        libraryFolder.getChildFile("Leads").createDirectory();
+
+        const auto writeClip = [](const juce::File& file, const std::vector<int>& pitches, int channel)
+        {
+            harmonia::NoteSequence sequence;
+            sequence.ppq = harmonia::kPPQ;
+            sequence.tempos.push_back({ 124.0, 0 });
+            sequence.timeSignatures.push_back({ 4, 4, 0 });
+            for (size_t i = 0; i < pitches.size(); ++i)
+                sequence.notes.push_back({ static_cast<int64_t>(i) * harmonia::kPPQ,
+                                           harmonia::kPPQ, pitches[i], 100, channel });
+            sequence.sort();
+            std::string writeError;
+            return harmonia::midi::writeToFile(file.getFullPathName().toStdString(), sequence, writeError);
+        };
+
+        check(writeClip(libraryFolder.getChildFile("Bass/loop_a.mid"), { 36, 41, 43, 38 }, 0),
+              "a corpus can be written to disk");
+        writeClip(libraryFolder.getChildFile("Bass/loop_b.mid"), { 33, 40, 45, 40 }, 0);
+        writeClip(libraryFolder.getChildFile("Leads/hook.mid"), { 72, 74, 76, 79 }, 0);
+
+        processor.forgetInstalledStyleModel();
+        check(processor.startLibraryScan(libraryFolder), "a folder scan starts");
+        check(! processor.startLibraryScan(libraryFolder), "and a second one is refused while it runs");
+
+        // No message loop here, so drive the completion step directly - the
+        // plugin does the same thing off a timer.
+        for (int i = 0; i < 400 && processor.isScanningLibrary(); ++i)
+        {
+            juce::Thread::sleep(25);
+            processor.pollLibraryScan();
+        }
+
+        check(! processor.isScanningLibrary(), "the scan finishes");
+        check(processor.hasStyleModel(), "and the plugin has a model it learned itself");
+        check(processor.styleClipCount() == 3, "one clip per file in the folder");
+        check(processor.styleSource() == ProgressionsProcessor::StyleSource::Installed,
+              "kept in the plugin, like a loaded one");
+        check(styleStore::hasInstalled(), "and written to the plugin's folder");
+        check(processor.lastScanSummary().isNotEmpty(), "with something to show the user");
+        std::cout << "  scan       : " << processor.lastScanSummary() << "\n";
+
+        // Every folder offered must actually be there, or the menu points at
+        // nothing.
+        bool suggestionsExist = true;
+        for (const auto& suggestion : ProgressionsProcessor::suggestedLibraryFolders())
+            suggestionsExist = suggestionsExist && suggestion.isDirectory();
+        check(suggestionsExist, "every suggested folder exists");
+
+        libraryFolder.deleteRecursively();
     }
 
     // ---- State round trip ----------------------------------------------------

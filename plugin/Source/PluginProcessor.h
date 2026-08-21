@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include "LibraryScan.h"
 #include "PreviewSynth.h"
 #include "RenderedPart.h"
 
@@ -36,7 +37,8 @@ constexpr const char* styleAmount = "styleAmount";
 class ProgressionsProcessor : public juce::AudioProcessor,
                           public juce::ChangeBroadcaster,
                           private juce::AudioProcessorValueTreeState::Listener,
-                          private juce::AsyncUpdater
+                          private juce::AsyncUpdater,
+                          private juce::Timer
 {
 public:
     ProgressionsProcessor();
@@ -115,6 +117,30 @@ public:
     /** One short line for the UI: where this brain came from. */
     juce::String styleSourceText() const;
 
+    /** Reads every MIDI file under `folder` and learns a model from it, on a
+        background thread, then keeps it in the plugin. This is how a producer
+        gets their own collection into the generators without a terminal.
+        Returns false if a scan is already running or the folder is gone. */
+    bool startLibraryScan(const juce::File& folder);
+    void cancelLibraryScan();
+    /** Takes the result once the background thread is done: installs the model
+        and regenerates. The plugin drives this from a timer; a caller with no
+        message loop of its own can call it directly. Returns true when it
+        finished a scan. */
+    bool pollLibraryScan();
+    bool isScanningLibrary() const { return scan != nullptr; }
+    /** True while the walk is still counting, when there is no total yet. */
+    bool libraryScanCounting() const;
+    int libraryScanDone() const;
+    int libraryScanTotal() const;
+    juce::File libraryScanFolder() const;
+    /** What the last finished scan found, for the UI. Empty before the first. */
+    juce::String lastScanSummary() const { return scanSummary; }
+
+    /** Folders on this machine worth offering as a starting point - the ones
+        that exist, in the order a producer is likely to want them. */
+    static juce::Array<juce::File> suggestedLibraryFolders();
+
     /** Pin the key instead of letting the detector choose. */
     void setForcedKey(bool forced, int tonic, harmonia::ScaleType scale);
     bool isKeyForced() const noexcept { return keyForced; }
@@ -143,6 +169,7 @@ public:
 private:
     void parameterChanged(const juce::String& parameterID, float newValue) override;
     void handleAsyncUpdate() override;
+    void timerCallback() override;
 
     harmonia::GenerateOptions currentOptions() const;
     void applyAnalysisOptions();
@@ -156,6 +183,8 @@ private:
     harmonia::StyleModel styleModel;
     juce::File styleFile;
     StyleSource styleOrigin = StyleSource::None;
+    std::unique_ptr<LibraryScan> scan;
+    juce::String scanSummary;
     harmonia::NoteSequence generated;
     juce::String sourceName;
     juce::String lastError;

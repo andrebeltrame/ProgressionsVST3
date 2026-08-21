@@ -509,6 +509,44 @@ TEST(ScanOptionsAreRespected)
         CHECK(! entry.drums);
 }
 
+TEST(LearningWithoutKeepingTheIndexGivesTheSameModel)
+{
+    const TemporaryLibrary library;
+
+    // A host only wants the style model. Dropping the entries has to change
+    // the memory used and nothing else - not the model, not the counts.
+    StyleModel kept;
+    ScanOptions withEntries;
+    const auto full = scanDirectory(library.root.string(), withEntries, {}, nullptr, &kept);
+
+    StyleModel lean;
+    ScanOptions withoutEntries;
+    withoutEntries.keepEntries = false;
+    const auto slim = scanDirectory(library.root.string(), withoutEntries, {}, nullptr, &lean);
+
+    CHECK(slim.entries.empty());
+    CHECK(slim.stats.indexed == full.stats.indexed);
+    CHECK(slim.stats.midiFilesFound == full.stats.midiFilesFound);
+    CHECK_EQ(lean.clipsLearned, kept.clipsLearned);
+    CHECK_EQ(lean.barsLearned, kept.barsLearned);
+    CHECK_EQ(styleModelToJson(lean), styleModelToJson(kept));
+}
+
+TEST(AScanCanBeStopped)
+{
+    const TemporaryLibrary library;
+
+    ScanOptions stopped;
+    stopped.shouldStop = [] { return true; };
+    const auto index = scanDirectory(library.root.string(), stopped, {}, nullptr);
+
+    CHECK(index.stats.cancelled);
+    CHECK(index.entries.empty());
+
+    // And a scan nobody stops must not think it was cancelled.
+    CHECK(! scanDirectory(library.root.string(), {}, {}, nullptr).stats.cancelled);
+}
+
 TEST(ALibraryClipCanDonateItsGroove)
 {
     const TemporaryLibrary library;

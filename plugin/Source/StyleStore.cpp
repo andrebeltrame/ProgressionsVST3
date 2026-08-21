@@ -79,6 +79,33 @@ bool install(const juce::File& source, juce::String& error)
     return true;
 }
 
+bool installModel(const harmonia::StyleModel& model, juce::String& error)
+{
+    if (model.empty())
+    {
+        error = "Nothing was learned, so there is no model to keep.";
+        return false;
+    }
+
+    const auto folder = directory();
+    const auto result = folder.createDirectory();
+    if (result.failed())
+    {
+        error = result.getErrorMessage();
+        return false;
+    }
+
+    const auto json = harmonia::styleModelToJson(model);
+    if (! installedFile().replaceWithText(json))
+    {
+        error = "Could not write " + installedFile().getFullPathName();
+        return false;
+    }
+
+    error.clear();
+    return true;
+}
+
 bool forget()
 {
     const auto file = installedFile();

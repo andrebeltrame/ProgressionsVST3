@@ -58,6 +58,9 @@ struct ScanStats
     /** AppleDouble twins and hidden system files, skipped before they can be
         mistaken for clips. A drive formatted exFAT is full of them. */
     size_t systemFilesSkipped = 0;
+    /** True when ScanOptions::shouldStop asked the walk to give up. Whatever
+        was learned before that point is still usable. */
+    bool cancelled = false;
     /** Extensions that were not MIDI, most common first, for spotting a
         collection that is all .rmi or still inside .zip files. */
     std::map<std::string, int> otherExtensions;
@@ -88,6 +91,14 @@ struct ScanOptions
     /** How many files to read at once. 0 picks one per core. Files are split
         into fixed blocks, so the result does not depend on thread timing. */
     unsigned threads = 0;
+    /** Keep the analysed entries. A caller that only wants a style model can
+        turn this off: a quarter of a million entries is a few hundred megabytes
+        to hold on to for nothing, which matters inside a host. */
+    bool keepEntries = true;
+    /** Polled during the walk and before every file; return true to abandon the
+        scan. Called from several threads at once, so read an atomic rather than
+        touching anything that needs a lock. */
+    std::function<bool()> shouldStop;
 };
 
 /** Walks a folder tree, analyses every .mid it finds and returns the index.

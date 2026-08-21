@@ -1,5 +1,7 @@
 #pragma once
 
+#include "harmonia/StyleModel.h"
+
 #include <juce_core/juce_core.h>
 
 #include <string>
@@ -32,6 +34,9 @@ bool hasInstalled();
 /** Copies `source` in, so it becomes the model every instance starts with.
     Returns false and fills `error` if the file will not parse or will not copy. */
 bool install(const juce::File& source, juce::String& error);
+
+/** Writes a model the plugin just learned itself, with no file to copy from. */
+bool installModel(const harmonia::StyleModel& model, juce::String& error);
 
 /** Removes the installed copy. The plugin falls back to the built-in model. */
 bool forget();

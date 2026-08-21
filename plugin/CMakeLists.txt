@@ -62,6 +62,7 @@ juce_add_plugin(Progressions
 target_sources(Progressions PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
+    Source/LibraryScan.cpp
     Source/StyleStore.cpp
     Source/UI/ProgressionsLookAndFeel.cpp
     Source/UI/PianoRollComponent.cpp

@@ -43,6 +43,21 @@ juce::String formatBpm(double bpm)
     return juce::String(bpm, 1) + " BPM";
 }
 
+juce::String scanRowText(const ProgressionsProcessor& processor)
+{
+    if (processor.libraryScanCounting())
+        return "looking for MIDI files...";
+
+    const int total = processor.libraryScanTotal();
+    if (total <= 0)
+        return "starting...";
+
+    const int done = processor.libraryScanDone();
+    return juce::String(done) + " / " + juce::String(total) + "   ("
+               + juce::String(juce::roundToInt(100.0f * static_cast<float>(done)
+                                               / static_cast<float>(total))) + "%)";
+}
+
 juce::String styleRowText(const ProgressionsProcessor& processor)
 {
     const int clips = processor.styleClipCount();
@@ -365,6 +380,16 @@ void ProgressionsEditor::refresh()
         if (processor.hasStyleModel())
             rows.emplace_back("My style", styleRowText(processor));
     }
+
+    if (processor.isScanningLibrary())
+    {
+        rows.emplace_back("Scanning", processor.libraryScanFolder().getFileName());
+        rows.emplace_back("Progress", scanRowText(processor));
+    }
+    else if (processor.lastScanSummary().isNotEmpty())
+    {
+        rows.emplace_back("Learned", processor.lastScanSummary());
+    }
     infoPanel.setRows(std::move(rows));
 
     const int part = juce::roundToInt(processor.apvts.getRawParameterValue(ParamID::part)->load());
@@ -400,10 +425,13 @@ void ProgressionsEditor::refresh()
         keyModeLabel.setEnabled(processor.isKeyForced());
     }
 
-    styleToggle.setEnabled(processor.hasStyleModel());
-    styleKnob.slider.setEnabled(processor.hasStyleModel());
-    styleKnob.label.setEnabled(processor.hasStyleModel());
-    styleButton.setButtonText(processor.hasStyleModel() ? "Change my library..." : "Learn from my library...");
+    const bool scanning = processor.isScanningLibrary();
+    styleToggle.setEnabled(processor.hasStyleModel() && ! scanning);
+    styleKnob.slider.setEnabled(processor.hasStyleModel() && ! scanning);
+    styleKnob.label.setEnabled(processor.hasStyleModel() && ! scanning);
+    styleButton.setButtonText(scanning ? "Stop scanning"
+                                       : (processor.hasStyleModel() ? "Change my library..."
+                                                                    : "Learn from my library..."));
 
     resetChordsButton.setEnabled(hasSource || processor.hasWrittenProgression());
     diceButton.setEnabled(hasSource || analysis.valid);
@@ -458,6 +486,10 @@ void ProgressionsEditor::timerCallback()
 {
     pianoRoll.setPlayPosition(processor.getPlayPositionNormalised());
 
+    // A scan takes minutes; the counter has to move or it looks hung.
+    if (processor.isScanningLibrary())
+        refresh();
+
     if (! processor.isPlayingInternally() && playButton.getToggleState())
     {
         playButton.setToggleState(false, juce::dontSendNotification);
@@ -481,26 +513,64 @@ void ProgressionsEditor::showLoadDialog()
 
 void ProgressionsEditor::showStyleMenu()
 {
-    if (! processor.hasStyleModel())
+    if (processor.isScanningLibrary())
     {
-        showStyleDialog();
+        processor.cancelLibraryScan();
         return;
     }
 
     juce::PopupMenu menu;
-    menu.addSectionHeader(juce::String(processor.styleClipCount()) + " clips, " + processor.styleSourceText());
-    menu.addItem(1, "Load another library...");
-    menu.addItem(2, "Forget this library",
-                 processor.styleSource() != ProgressionsProcessor::StyleSource::BuiltIn);
+
+    if (processor.hasStyleModel())
+        menu.addSectionHeader(juce::String(processor.styleClipCount()) + " clips, "
+                                  + processor.styleSourceText());
+
+    menu.addItem(1, "Scan a MIDI folder...");
+
+    // The folders a producer's collection actually lives in, so the common
+    // case is one click rather than a trip through a file browser.
+    const auto suggestions = ProgressionsProcessor::suggestedLibraryFolders();
+    if (! suggestions.isEmpty())
+    {
+        juce::PopupMenu quick;
+        for (int i = 0; i < suggestions.size(); ++i)
+            quick.addItem(100 + i, suggestions[i].getFullPathName());
+        menu.addSubMenu("Scan a folder I already have", quick);
+    }
+
+    menu.addSeparator();
+    menu.addItem(2, "Load a .style.json...");
+    menu.addItem(3, "Forget this library",
+                 processor.hasStyleModel()
+                     && processor.styleSource() != ProgressionsProcessor::StyleSource::BuiltIn);
 
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(styleButton),
-                       [this](int choice)
+                       [this, suggestions](int choice)
                        {
                            if (choice == 1)
-                               showStyleDialog();
+                               showScanDialog();
                            else if (choice == 2)
+                               showStyleDialog();
+                           else if (choice == 3)
                                processor.forgetInstalledStyleModel();
+                           else if (choice >= 100 && choice - 100 < suggestions.size())
+                               processor.startLibraryScan(suggestions[choice - 100]);
                        });
+}
+
+void ProgressionsEditor::showScanDialog()
+{
+    chooser = std::make_unique<juce::FileChooser>("Choose the folder your MIDI lives in",
+                                                  juce::File::getSpecialLocation(juce::File::userMusicDirectory),
+                                                  juce::String());
+    chooser->launchAsync(juce::FileBrowserComponent::openMode
+                             | juce::FileBrowserComponent::canSelectDirectories,
+                         [this](const juce::FileChooser& fc)
+                         {
+                             const auto folder = fc.getResult();
+                             if (folder.isDirectory())
+                                 processor.startLibraryScan(folder);
+                         });
 }
 
 void ProgressionsEditor::showStyleDialog()

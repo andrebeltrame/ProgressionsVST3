@@ -264,11 +264,30 @@ modelo. E para ver o que a sua coleção anda tocando:
 harmonia-cli library --index ~/harmonia-library.json --progressions
 ```
 
+### O plugin escaneia sozinho
+
+Você não precisa da linha de comando para nada disso. Em **Learn from my
+library…** o menu abre com:
+
+- **Scan a MIDI folder…** — escolha a pasta e pronto.
+- **Scan a folder I already have** — os lugares onde uma coleção costuma estar
+  (a User Library do Ableton, `~/Music`, e cada drive montado em `/Volumes`),
+  já filtrados pelos que existem na sua máquina.
+- **Load a .style.json…** — para um modelo que você montou pelo `harmonia-cli`.
+
+O scan roda em segundo plano, numa thread de prioridade baixa: o áudio não
+engasga e a interface não trava. O painel mostra `1234 / 227335`, e o botão vira
+**Stop scanning** — uma coleção grande leva minutos e você tem que poder
+desistir. O que já foi aprendido até ali continua valendo.
+
+Nada sai da sua máquina. O plugin lê os arquivos, conta estatísticas e joga o
+índice fora: só o modelo fica.
+
 ### O cérebro dentro do plugin
 
-O plugin não guarda um caminho para o seu HD — ele guarda o cérebro. Quando
-você escolhe um `.style.json` em **Learn from my library…**, o modelo é copiado
-para dentro do plugin:
+O plugin não guarda um caminho para o seu HD — ele guarda o cérebro. Tanto o
+scan acima quanto um `.style.json` carregado à mão são copiados para dentro do
+plugin:
 
 ```
 ~/Library/Application Support/Nowhr Dynamics/Progressions/library.style.json
