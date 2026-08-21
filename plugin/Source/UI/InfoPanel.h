@@ -36,7 +36,7 @@ public:
 
         const float rowHeight = rows.empty()
                                     ? 19.0f
-                                    : juce::jlimit(15.0f, 21.0f, inner.getHeight() / static_cast<float>(rows.size()));
+                                    : juce::jlimit(12.0f, 21.0f, inner.getHeight() / static_cast<float>(rows.size()));
 
         for (const auto& [key, value] : rows)
         {

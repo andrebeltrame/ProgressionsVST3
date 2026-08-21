@@ -1,5 +1,7 @@
 #include "PluginEditor.h"
 
+#include <iterator>
+
 using namespace HarmoniaColours;
 using namespace harmonia;
 
@@ -39,6 +41,12 @@ int modeIndexForScale(harmonia::ScaleType scale)
 juce::String formatBpm(double bpm)
 {
     return juce::String(bpm, 1) + " BPM";
+}
+
+juce::String styleRowText(const HarmoniaProcessor& processor)
+{
+    const int clips = processor.styleClipCount();
+    return juce::String(clips) + (clips == 1 ? " clip learned" : " clips learned");
 }
 } // namespace
 
@@ -110,6 +118,7 @@ HarmoniaEditor::HarmoniaEditor(HarmoniaProcessor& p)
     buildKnob(swingKnob, "Swing", ParamID::swing);
     buildKnob(octaveKnob, "Octave", ParamID::octave);
     buildKnob(voicesKnob, "Voices", ParamID::voices);
+    buildKnob(styleKnob, "My style", ParamID::styleAmount);
 
     densityKnob.slider.setTooltip("How busy the generated part is");
     complexityKnob.slider.setTooltip("Chord extensions and chromatic movement");
@@ -117,6 +126,7 @@ HarmoniaEditor::HarmoniaEditor(HarmoniaProcessor& p)
     swingKnob.slider.setTooltip("Shuffle on the off-beat 16ths");
     octaveKnob.slider.setTooltip("Move the part up or down whole octaves");
     voicesKnob.slider.setTooltip("Maximum notes in a chord voicing");
+    styleKnob.slider.setTooltip("How much of the material learned from your own MIDI collection to use");
 
     // ---- Side panel controls -------------------------------------------------
     for (auto* label : { &lengthLabel, &arpLabel, &harmonyLabel, &levelLabel })
@@ -234,6 +244,16 @@ HarmoniaEditor::HarmoniaEditor(HarmoniaProcessor& p)
     applyProgressionButton.onClick = [this] { applyTypedProgression(); };
     addAndMakeVisible(applyProgressionButton);
 
+    // ---- Your own collection ------------------------------------------------
+    styleButton.setTooltip("Load the .style.json that 'harmonia-cli scan' learned from your MIDI folder");
+    styleButton.onClick = [this] { showStyleDialog(); };
+    addAndMakeVisible(styleButton);
+
+    styleToggle.setTooltip("Write bars, movements and voicings the way your own clips do");
+    addAndMakeVisible(styleToggle);
+    styleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        processor.apvts, ParamID::useStyle, styleToggle);
+
     // ---- Actions -------------------------------------------------------------
     diceButton.setTooltip("Roll a new seed - same settings, a different idea");
     diceButton.onClick = [this] { processor.rollNewSeed(); };
@@ -270,7 +290,7 @@ HarmoniaEditor::HarmoniaEditor(HarmoniaProcessor& p)
 
     setResizable(true, true);
     setResizeLimits(980, 720, 1800, 1300);
-    setSize(1060, 760);
+    setSize(1060, 780);
     startTimerHz(30);
 }
 
@@ -328,10 +348,14 @@ void HarmoniaEditor::refresh()
         rows.emplace_back("Seed", juce::String(static_cast<juce::int64>(processor.getSeed())));
         rows.emplace_back("Generated", juce::String(static_cast<int>(processor.getGeneratedSequence().notes.size()))
                                            + " notes");
+        if (processor.hasStyleModel())
+            rows.emplace_back("My style", styleRowText(processor));
     }
     else
     {
         rows.emplace_back("Status", "waiting for a clip");
+        if (processor.hasStyleModel())
+            rows.emplace_back("My style", styleRowText(processor));
     }
     infoPanel.setRows(std::move(rows));
 
@@ -364,6 +388,11 @@ void HarmoniaEditor::refresh()
         keyModeBox.setEnabled(processor.isKeyForced());
         keyModeLabel.setEnabled(processor.isKeyForced());
     }
+
+    styleToggle.setEnabled(processor.hasStyleModel());
+    styleKnob.slider.setEnabled(processor.hasStyleModel());
+    styleKnob.label.setEnabled(processor.hasStyleModel());
+    styleButton.setButtonText(processor.hasStyleModel() ? "Reload my library..." : "Learn from my library...");
 
     resetChordsButton.setEnabled(hasSource || processor.hasWrittenProgression());
     diceButton.setEnabled(hasSource || analysis.valid);
@@ -436,6 +465,22 @@ void HarmoniaEditor::showLoadDialog()
                              const auto file = fc.getResult();
                              if (file.existsAsFile())
                                  processor.loadMidiFile(file);
+                         });
+}
+
+void HarmoniaEditor::showStyleDialog()
+{
+    chooser = std::make_unique<juce::FileChooser>("Choose a style model learned by 'harmonia-cli scan'",
+                                                  processor.styleModelFile().existsAsFile()
+                                                      ? processor.styleModelFile()
+                                                      : juce::File::getSpecialLocation(juce::File::userHomeDirectory),
+                                                  "*.style.json;*.json");
+    chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                         [this](const juce::FileChooser& fc)
+                         {
+                             const auto file = fc.getResult();
+                             if (file.existsAsFile())
+                                 processor.loadStyleModelFile(file);
                          });
 }
 
@@ -543,8 +588,9 @@ void HarmoniaEditor::resized()
         footer.removeFromTop(10);
 
         auto knobRow = footer.removeFromTop(90);
-        Knob* knobs[] = { &densityKnob, &complexityKnob, &humanizeKnob, &swingKnob, &octaveKnob, &voicesKnob };
-        const int knobWidth = knobRow.getWidth() / 6;
+        Knob* knobs[] = { &densityKnob, &complexityKnob, &humanizeKnob, &swingKnob,
+                          &octaveKnob, &voicesKnob, &styleKnob };
+        const int knobWidth = knobRow.getWidth() / static_cast<int>(std::size(knobs));
         for (auto* knob : knobs)
         {
             auto cell = knobRow.removeFromLeft(knobWidth).reduced(4, 0);
@@ -567,7 +613,8 @@ void HarmoniaEditor::resized()
     area.removeFromLeft(12);
     {
         // Everything below the read-out is fixed height; the read-out takes the rest.
-        constexpr int controlsHeight = 3 * (14 + 26) + 2 * 8 + 12 + 24 + 4 + 24 + 12 + 14 + 24;
+        constexpr int controlsHeight = 3 * (14 + 26) + 2 * 8 + 12 + 24 + 4 + 24
+                                     + 12 + 14 + 24 + 10 + 26 + 4 + 24;
         infoPanel.setBounds(side.removeFromTop(juce::jmax(150, side.getHeight() - controlsHeight - 10)));
         side.removeFromTop(10);
 
@@ -604,6 +651,11 @@ void HarmoniaEditor::resized()
         side.removeFromTop(12);
         levelLabel.setBounds(side.removeFromTop(14));
         levelSlider.setBounds(side.removeFromTop(24));
+
+        side.removeFromTop(10);
+        styleButton.setBounds(side.removeFromTop(26).reduced(2, 0));
+        side.removeFromTop(4);
+        styleToggle.setBounds(side.removeFromTop(24).reduced(2, 0));
     }
 
     // ---- Main view -----------------------------------------------------------

@@ -7,6 +7,8 @@
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
 
+#include "harmonia/StyleModel.h"
+
 #include <iostream>
 #include <map>
 
@@ -186,6 +188,54 @@ int main(int argc, char** argv)
         check(blankNoteOns > 0, "and play back");
     }
 
+    // ---- A style model learned from a collection ---------------------------------
+    {
+        // Build a tiny corpus, learn from it, and check the plugin picks it up.
+        harmonia::StyleModel model;
+        harmonia::NoteSequence corpus;
+        corpus.ppq = harmonia::kPPQ;
+        corpus.tempos.push_back({ 122.0, 0 });
+        corpus.timeSignatures.push_back({ 4, 4, 0 });
+        const int64_t slot = harmonia::kPPQ / 4;
+        for (int bar = 0; bar < 4; ++bar)
+            for (int position : { 0, 6 })
+                corpus.notes.push_back({ bar * harmonia::kPPQ * 4 + position * slot, slot * 2,
+                                         36 + (position == 6 ? 12 : 0), position == 0 ? 110 : 84, 0 });
+        corpus.sort();
+        harmonia::learnFromClip(model, corpus, harmonia::analyze(corpus), "bass");
+
+        const auto modelFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                   .getChildFile("harmonia_smoke.style.json");
+        std::string styleError;
+        check(harmonia::saveStyleModel(modelFile.getFullPathName().toStdString(), model, styleError),
+              "a style model can be written");
+
+        check(processor.loadStyleModelFile(modelFile), "the plugin loads a style model");
+        check(processor.hasStyleModel(), "and knows it has one");
+        std::cout << "  style      : " << processor.styleSummary() << "\n";
+
+        processor.apvts.getParameter(ParamID::part)->setValueNotifyingHost(
+            processor.apvts.getParameter(ParamID::part)->convertTo0to1(4.0f)); // Bass
+        processor.apvts.getParameter(ParamID::humanize)->setValueNotifyingHost(0.0f);
+        processor.regenerate();
+
+        const auto& bass = processor.getGeneratedSequence();
+        check(! bass.empty(), "and writes a bass with it");
+
+        bool onLearnedSlots = ! bass.empty();
+        for (const auto& note : bass.notes)
+        {
+            const auto position = (note.startTick % (harmonia::kPPQ * 4)) / slot;
+            if (position != 0 && position != 6)
+                onLearnedSlots = false;
+        }
+        check(onLearnedSlots, "on exactly the 16ths the corpus plays");
+
+        processor.clearStyleModel();
+        check(! processor.hasStyleModel(), "and the model can be unloaded");
+        check(processor.loadStyleModelFile(modelFile), "and loaded again");
+    }
+
     // ---- State round trip ----------------------------------------------------
     juce::MemoryBlock state;
     processor.getStateInformation(state);
@@ -219,7 +269,7 @@ int main(int argc, char** argv)
 
         if (editor != nullptr)
         {
-            editor->setSize(1060, 760);
+            editor->setSize(1060, 780);
             juce::Image image(juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);
             {
                 juce::Graphics g(image);

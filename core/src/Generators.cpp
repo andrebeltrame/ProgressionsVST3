@@ -63,6 +63,7 @@ struct Onset
     int64_t tick = 0;
     int64_t length = 0;
     float accent = 0.5f;
+    int velocity = 0; // 0 = derive it from the accent
 };
 
 struct Context
@@ -83,6 +84,17 @@ struct Context
     /** The groove the generators write against: the source clip's, or a donor. */
     RhythmProfile rhythm;
     Key key;
+
+    /** True when the corpus has material for this role and the dice agree. */
+    bool useStyle(StyleRole role)
+    {
+        const auto* style = options->style;
+        if (style == nullptr || style->empty() || ! style->hasPatternsFor(role))
+            return false;
+        return rng.chance(std::clamp(options->styleAmount, 0.0f, 1.0f));
+    }
+
+    const StyleModel* style() const { return options->style; }
     int lowPitch = 48;
     int highPitch = 84;
 
@@ -126,6 +138,13 @@ int nearestChordTone(int pitch, const Chord& chord)
     return best;
 }
 
+/** A voicing shape lifted from the corpus, snapped onto the chord that is
+    actually playing. The corpus supplies the spacing and register; the harmony
+    still comes from the progression, so a major shape over a minor chord does
+    not drag a wrong third in. */
+std::vector<int> learnedVoicing(struct Context& ctx, const Chord& chord,
+                                const std::vector<int>& previous, int maxVoices);
+
 /** Positional weight of a 16th slot inside a bar - downbeats are heaviest. */
 float slotWeight(int slot)
 {
@@ -136,7 +155,8 @@ float slotWeight(int slot)
     return 0.28f;
 }
 
-std::vector<Onset> buildOnsets(Context& ctx, float density, float legato, bool useSourceGrid)
+std::vector<Onset> buildOnsets(Context& ctx, float density, float legato, bool useSourceGrid,
+                               StyleRole role = StyleRole::Melody)
 {
     const auto& rhythm = ctx.rhythm;
     const int slotsPerBar = 16;
@@ -158,42 +178,131 @@ std::vector<Onset> buildOnsets(Context& ctx, float density, float legato, bool u
         sourceInfluence = activeSlots >= 4 ? ceiling : (activeSlots >= 2 ? ceiling * 0.5f : 0.0f);
     }
 
-    std::vector<int64_t> ticks;
+    // Roughly how many onsets a bar should have at this density, used both to
+    // pick a learned bar and to shape a generated one.
+    const float targetOnsets = multiplier * 7.8f;
+
+    struct Hit
+    {
+        int64_t tick;
+        int velocity;
+        int64_t learnedLength;
+    };
+
+    std::vector<Hit> hits;
     for (int bar = 0; bar < ctx.bars; ++bar)
     {
-        std::vector<int64_t> barTicksList;
-        for (int slot = 0; slot < slotsPerBar; ++slot)
-        {
-            const float weight = (1.0f - sourceInfluence) * slotWeight(slot)
-                               + sourceInfluence * rhythm.grid[static_cast<size_t>(slot)];
+        const int64_t barStart = static_cast<int64_t>(bar) * ctx.barTicks;
+        std::vector<Hit> barHits;
 
-            const float probability = std::clamp(weight * multiplier, 0.0f, 0.96f);
-            if (ctx.rng.chance(probability))
-                barTicksList.push_back(static_cast<int64_t>(bar) * ctx.barTicks + slot * slotTicks);
+        // A bar lifted from your own collection, when there is one.
+        const RhythmPattern* learned = ctx.useStyle(role)
+                                           ? pickPattern(*ctx.style(), role, targetOnsets, ctx.rng)
+                                           : nullptr;
+
+        if (learned != nullptr)
+        {
+            for (int slot = 0; slot < slotsPerBar; ++slot)
+            {
+                if (! learned->hasOnset(slot))
+                    continue;
+                const int64_t length = static_cast<int64_t>(std::max<uint8_t>(1, learned->lengthSlots[static_cast<size_t>(slot)]))
+                                     * slotTicks;
+                barHits.push_back({ barStart + slot * slotTicks,
+                                    learned->velocity[static_cast<size_t>(slot)],
+                                    length });
+            }
         }
-        if (barTicksList.empty())
-            barTicksList.push_back(static_cast<int64_t>(bar) * ctx.barTicks);
-        ticks.insert(ticks.end(), barTicksList.begin(), barTicksList.end());
+        else
+        {
+            for (int slot = 0; slot < slotsPerBar; ++slot)
+            {
+                const float weight = (1.0f - sourceInfluence) * slotWeight(slot)
+                                   + sourceInfluence * rhythm.grid[static_cast<size_t>(slot)];
+
+                const float probability = std::clamp(weight * multiplier, 0.0f, 0.96f);
+                if (ctx.rng.chance(probability))
+                    barHits.push_back({ barStart + slot * slotTicks, 0, 0 });
+            }
+        }
+
+        if (barHits.empty())
+            barHits.push_back({ barStart, 0, 0 });
+        hits.insert(hits.end(), barHits.begin(), barHits.end());
     }
 
-    std::sort(ticks.begin(), ticks.end());
-    ticks.erase(std::unique(ticks.begin(), ticks.end()), ticks.end());
+    std::sort(hits.begin(), hits.end(), [](const Hit& a, const Hit& b) { return a.tick < b.tick; });
+    hits.erase(std::unique(hits.begin(), hits.end(),
+                           [](const Hit& a, const Hit& b) { return a.tick == b.tick; }),
+               hits.end());
 
     std::vector<Onset> onsets;
-    onsets.reserve(ticks.size());
-    for (size_t i = 0; i < ticks.size(); ++i)
+    onsets.reserve(hits.size());
+    for (size_t i = 0; i < hits.size(); ++i)
     {
-        const int64_t next = (i + 1 < ticks.size()) ? ticks[i + 1] : ctx.totalTicks;
-        const int64_t gap = std::max<int64_t>(slotTicks, next - ticks[i]);
+        const int64_t next = (i + 1 < hits.size()) ? hits[i + 1].tick : ctx.totalTicks;
+        const int64_t gap = std::max<int64_t>(slotTicks, next - hits[i].tick);
 
         Onset onset;
-        onset.tick = ticks[i];
-        onset.length = std::max<int64_t>(slotTicks / 2, static_cast<int64_t>(static_cast<double>(gap) * legato));
-        const int slot = static_cast<int>((ticks[i] % ctx.barTicks) / slotTicks);
+        onset.tick = hits[i].tick;
+        onset.velocity = hits[i].velocity;
+        onset.length = hits[i].learnedLength > 0
+                           ? std::min(hits[i].learnedLength, gap)
+                           : std::max<int64_t>(slotTicks / 2, static_cast<int64_t>(static_cast<double>(gap) * legato));
+        const int slot = static_cast<int>((hits[i].tick % ctx.barTicks) / slotTicks);
         onset.accent = slotWeight(slot);
         onsets.push_back(onset);
     }
     return onsets;
+}
+
+/** Velocity for an onset: what the corpus played, or what the accent implies. */
+int velocityFor(const Onset& onset, int baseVelocity, float accentDepth)
+{
+    if (onset.velocity > 0)
+        return std::clamp(onset.velocity, 1, 127);
+    return std::clamp(static_cast<int>(static_cast<float>(baseVelocity)
+                                       * (1.0f - accentDepth + accentDepth * onset.accent)),
+                      1, 127);
+}
+
+std::vector<int> learnedVoicing(Context& ctx, const Chord& chord,
+                                const std::vector<int>& previous, int maxVoices)
+{
+    const auto* style = ctx.style();
+    if (style == nullptr || style->voicings.empty())
+        return {};
+    if (! ctx.rng.chance(std::clamp(ctx.options->styleAmount, 0.0f, 1.0f)))
+        return {};
+
+    const auto intervals = sampleVoicing(*style, static_cast<size_t>(std::max(2, maxVoices)), ctx.rng);
+    if (intervals.size() < 2)
+        return {};
+
+    const int anchor = previous.empty() ? (ctx.lowPitch + ctx.highPitch) / 2 - 6 : previous.front();
+    int root = nearestPitchWithClass(chord.root, anchor);
+
+    std::vector<int> voices;
+    voices.reserve(intervals.size());
+    for (int interval : intervals)
+        voices.push_back(root + interval);
+
+    // Slide the whole stack by octaves until it sits in the register.
+    for (int attempt = 0; attempt < 4 && voices.back() > ctx.highPitch; ++attempt)
+        for (int& pitch : voices)
+            pitch -= 12;
+    for (int attempt = 0; attempt < 4 && voices.front() < ctx.lowPitch; ++attempt)
+        for (int& pitch : voices)
+            pitch += 12;
+    if (voices.front() < ctx.lowPitch || voices.back() > ctx.highPitch)
+        return {};
+
+    for (int& pitch : voices)
+        pitch = std::clamp(nearestChordTone(pitch, chord), ctx.lowPitch, ctx.highPitch);
+
+    std::sort(voices.begin(), voices.end());
+    voices.erase(std::unique(voices.begin(), voices.end()), voices.end());
+    return voices.size() >= 2 ? voices : std::vector<int> {};
 }
 
 void applySwing(Context& ctx, std::vector<Onset>& onsets)
@@ -294,7 +403,9 @@ NoteSequence writePad(Context& ctx)
     for (const auto& segment : ctx.progression)
     {
         Chord chord = extendChord(segment.chord, ctx.key, options.complexity);
-        auto voicing = voiceChord(chord, previousVoicing, ctx.lowPitch, ctx.highPitch, options.maxVoices);
+        auto voicing = learnedVoicing(ctx, chord, previousVoicing, options.maxVoices);
+        if (voicing.empty())
+            voicing = voiceChord(chord, previousVoicing, ctx.lowPitch, ctx.highPitch, options.maxVoices);
         if (voicing.empty())
             continue;
         previousVoicing = voicing;
@@ -347,7 +458,8 @@ NoteSequence writeChords(Context& ctx)
     const auto& options = *ctx.options;
 
     auto onsets = buildOnsets(ctx, 0.25f + 0.5f * options.density, 0.62f,
-                              options.followSourceRhythm || options.useGrooveDonor);
+                              options.followSourceRhythm || options.useGrooveDonor,
+                              StyleRole::Chords);
     applySwing(ctx, onsets);
 
     std::vector<int> previousVoicing;
@@ -355,7 +467,9 @@ NoteSequence writeChords(Context& ctx)
     {
         const auto& segment = ctx.chordAt(onset.tick);
         Chord chord = extendChord(segment.chord, ctx.key, options.complexity);
-        auto voicing = voiceChord(chord, previousVoicing, ctx.lowPitch, ctx.highPitch, options.maxVoices);
+        auto voicing = learnedVoicing(ctx, chord, previousVoicing, options.maxVoices);
+        if (voicing.empty())
+            voicing = voiceChord(chord, previousVoicing, ctx.lowPitch, ctx.highPitch, options.maxVoices);
         if (voicing.empty())
             continue;
         previousVoicing = voicing;
@@ -366,8 +480,7 @@ NoteSequence writeChords(Context& ctx)
             note.startTick = onset.tick;
             note.lengthTick = onset.length;
             note.pitch = clampPitch(voicing[voice], ctx.lowPitch, ctx.highPitch);
-            note.velocity = std::clamp(static_cast<int>(static_cast<float>(options.baseVelocity)
-                                                        * (0.68f + 0.32f * onset.accent))
+            note.velocity = std::clamp(velocityFor(onset, options.baseVelocity, 0.32f)
                                            - static_cast<int>(voice) * 2,
                                        1, 127);
             note.channel = options.channel;
@@ -377,8 +490,46 @@ NoteSequence writeChords(Context& ctx)
     return out;
 }
 
+/** Bass written from the corpus: your bars, and your intervals over the root. */
+NoteSequence writeLearnedBass(Context& ctx)
+{
+    NoteSequence out;
+    const auto& options = *ctx.options;
+
+    auto onsets = buildOnsets(ctx, options.density, 0.85f, false, StyleRole::Bass);
+    applySwing(ctx, onsets);
+
+    for (const auto& onset : onsets)
+    {
+        const auto& segment = ctx.chordAt(onset.tick);
+        const int slot = static_cast<int>((onset.tick % ctx.barTicks) / ctx.slotTicks);
+        const int interval = sampleBassInterval(*ctx.style(), slotClassFor(slot), ctx.rng, 0);
+
+        int pitch = clampPitch(nearestPitchWithClass(mod12(segment.chord.root + interval), ctx.lowPitch + 7),
+                               ctx.lowPitch, ctx.highPitch);
+
+        // Trust the corpus, but do not let it drop a note that belongs to
+        // neither the chord nor the key onto a strong beat.
+        if (! segment.chord.containsPitchClass(pitch) && ! ctx.key.contains(mod12(pitch))
+            && ctx.rng.chance(0.7f))
+            pitch = clampPitch(nearestPitchWithClass(segment.chord.root, pitch), ctx.lowPitch, ctx.highPitch);
+
+        Note note;
+        note.startTick = onset.tick;
+        note.lengthTick = std::max<int64_t>(ctx.slotTicks / 2, onset.length);
+        note.pitch = pitch;
+        note.velocity = velocityFor(onset, options.baseVelocity, 0.25f);
+        note.channel = options.channel;
+        out.notes.push_back(note);
+    }
+    return out;
+}
+
 NoteSequence writeBass(Context& ctx)
 {
+    if (ctx.useStyle(StyleRole::Bass) && ! ctx.style()->bassIntervalBySlotClass[0].empty())
+        return writeLearnedBass(ctx);
+
     NoteSequence out;
     const auto& options = *ctx.options;
     const float density = std::clamp(options.density, 0.0f, 1.0f);
@@ -528,7 +679,8 @@ NoteSequence writePluck(Context& ctx)
     const auto& options = *ctx.options;
 
     auto onsets = buildOnsets(ctx, 0.35f + 0.55f * options.density, 0.4f,
-                              options.followSourceRhythm || options.useGrooveDonor);
+                              options.followSourceRhythm || options.useGrooveDonor,
+                              StyleRole::Pluck);
     applySwing(ctx, onsets);
 
     const int64_t maxLength = std::max<int64_t>(ctx.slotTicks / 2, ctx.slotTicks * 3 / 2);
@@ -563,9 +715,7 @@ NoteSequence writePluck(Context& ctx)
         note.startTick = onset.tick;
         note.lengthTick = std::min(maxLength, std::max<int64_t>(ctx.slotTicks / 3, onset.length));
         note.pitch = pitch;
-        note.velocity = std::clamp(static_cast<int>(static_cast<float>(options.baseVelocity)
-                                                    * (0.7f + 0.3f * onset.accent)),
-                                   1, 127);
+        note.velocity = velocityFor(onset, options.baseVelocity, 0.3f);
         note.channel = options.channel;
         out.notes.push_back(note);
 
@@ -591,7 +741,8 @@ NoteSequence writeMelodicLine(Context& ctx, bool counterMelody)
     const float density = std::clamp(options.density * (counterMelody ? 0.85f : 1.0f), 0.05f, 1.0f);
     auto onsets = buildOnsets(ctx, density, 0.86f,
                               options.useGrooveDonor
-                                  || (options.followSourceRhythm && ! counterMelody));
+                                  || (options.followSourceRhythm && ! counterMelody),
+                              StyleRole::Melody);
     applySwing(ctx, onsets);
     if (onsets.empty())
         return out;
@@ -604,17 +755,34 @@ NoteSequence writeMelodicLine(Context& ctx, bool counterMelody)
     const std::vector<float> stepWeights { 0.6f, 2.2f, 3.0f, 1.4f, 2.6f, 1.8f, 0.7f };
     const std::vector<int> stepValues { -3, -2, -1, 0, 1, 2, 3 };
 
+    // When there is a corpus, the motif walks the way your own lines walk.
+    const bool learnedSteps = ctx.style() != nullptr && ! ctx.style()->stepMarginal.empty()
+                            && ctx.rng.chance(std::clamp(options.styleAmount, 0.0f, 1.0f));
+
     const auto makeMotif = [&](int length)
     {
         std::vector<int> motif;
         motif.reserve(static_cast<size_t>(length));
         int degree = 0;
+        int previousStep = 0;
+
         for (int i = 0; i < length; ++i)
         {
             motif.push_back(degree);
-            int step = stepValues[static_cast<size_t>(ctx.rng.weighted(stepWeights))];
-            if (ctx.rng.chance(0.12f + 0.25f * options.complexity))
-                step += ctx.rng.chance(0.5f) ? 2 : -2; // occasional leap
+
+            int step = 0;
+            if (learnedSteps)
+            {
+                step = sampleStep(*ctx.style(), previousStep, ctx.rng, 1);
+            }
+            else
+            {
+                step = stepValues[static_cast<size_t>(ctx.rng.weighted(stepWeights))];
+                if (ctx.rng.chance(0.12f + 0.25f * options.complexity))
+                    step += ctx.rng.chance(0.5f) ? 2 : -2; // occasional leap
+            }
+
+            previousStep = step;
             degree = std::clamp(degree + step, -7, 8);
         }
         return motif;
@@ -725,9 +893,7 @@ NoteSequence writeMelodicLine(Context& ctx, bool counterMelody)
         note.startTick = onset.tick;
         note.lengthTick = onset.length;
         note.pitch = pitch;
-        note.velocity = std::clamp(static_cast<int>(static_cast<float>(options.baseVelocity)
-                                                    * (0.66f + 0.34f * onset.accent)),
-                                   1, 127);
+        note.velocity = velocityFor(onset, options.baseVelocity, 0.34f);
         note.channel = options.channel;
         out.notes.push_back(note);
         previousPitch = pitch;

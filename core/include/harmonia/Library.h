@@ -1,6 +1,7 @@
 #pragma once
 
 #include "harmonia/Analysis.h"
+#include "harmonia/StyleModel.h"
 #include "harmonia/Theory.h"
 
 #include <functional>
@@ -52,11 +53,14 @@ struct ScanOptions
 };
 
 /** Walks a folder tree, analyses every .mid it finds and returns the index.
-    `progress` is called with (relative path, done, total) as it goes. */
+    `progress` is called with (relative path, done, total) as it goes.
+    Pass a `styleModel` to also learn from every clip in the same pass - reading
+    a large drive twice is the slow part. */
 LibraryIndex scanDirectory(const std::string& root,
                            const ScanOptions& options,
                            const std::function<void(const std::string&, size_t, size_t)>& progress = {},
-                           std::vector<std::string>* errors = nullptr);
+                           std::vector<std::string>* errors = nullptr,
+                           StyleModel* styleModel = nullptr);
 
 bool saveIndex(const std::string& path, const LibraryIndex& index, std::string& error);
 bool loadIndex(const std::string& path, LibraryIndex& index, std::string& error);

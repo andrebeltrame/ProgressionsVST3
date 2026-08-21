@@ -5,6 +5,7 @@
 #include "harmonia/Library.h"
 #include "harmonia/Presets.h"
 #include "harmonia/Progression.h"
+#include "harmonia/StyleModel.h"
 
 #include <cstring>
 #include <map>
@@ -125,7 +126,7 @@ void printUsage()
         "  harmonia-cli <input.mid> [options]      analyse a clip and write parts over it\n"
         "  harmonia-cli --progression \"Am F C G\"    write parts over chords you type\n"
         "  harmonia-cli --preset deep-warm         write parts over a style preset\n"
-        "  harmonia-cli presets [--style X]        list the built-in progressions\n"
+        "  harmonia-cli presets [--genre X]        list the built-in progressions\n"
         "  harmonia-cli scan <folder> [options]    index a folder of MIDI files\n"
         "  harmonia-cli library [options]          search an index\n"
         "\n"
@@ -136,6 +137,9 @@ void printUsage()
         "  --preset <id>        use a built-in progression (see: harmonia-cli presets)\n"
         "  --groove <file|text> borrow the rhythm of another clip: a .mid path, or a\n"
         "                       substring matched against --index\n"
+        "  --style <file>       write in the style learned from your collection\n"
+        "                       (the .style.json that 'scan' produces)\n"
+        "  --style-amount <0..1> how much of the learned material to use (default 1)\n"
         "  --out <dir>          output folder (default: current directory)\n"
         "  --prefix <name>      output file prefix\n"
         "  --seed <n>           same seed + same settings = the same idea\n"
@@ -161,6 +165,9 @@ void printUsage()
         "  --no-recursive       only look in the folder itself\n"
         "  --max <n>            stop after n files\n"
         "  --skip-drums         leave percussion out of the index\n"
+        "  --style <file>       where to write the style model\n"
+        "                       (default: alongside the index, as *.style.json)\n"
+        "  --no-learn           only catalogue, do not learn a style model\n"
         "  --quiet              no per-file output\n"
         "\n"
         "library:\n"
@@ -173,7 +180,9 @@ void printUsage()
         "  --min-bars <n>       skip anything shorter\n"
         "  --with-drums         include percussion\n"
         "  --limit <n>          maximum results (default 40)\n"
-        "  --tags               show the tag histogram instead of the clips\n";
+        "  --tags               show the tag histogram instead of the clips\n"
+        "  --progressions       show the progressions mined from your own clips\n"
+        "  --style <file>       style model to read for --progressions\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +193,7 @@ int runPresets(const std::vector<std::string>& args)
 {
     std::string styleFilter;
     for (size_t i = 0; i < args.size(); ++i)
-        if (args[i] == "--style" && i + 1 < args.size())
+        if ((args[i] == "--genre" || args[i] == "--style") && i + 1 < args.size())
             styleFilter = toLower(args[++i]);
 
     std::string currentStyle;
@@ -221,8 +230,10 @@ int runScan(const std::vector<std::string>& args)
 
     const std::string root = args[0];
     std::string indexPath = "harmonia-library.json";
+    std::string stylePath;
     ScanOptions options;
     bool quiet = false;
+    bool learn = true;
 
     for (size_t i = 1; i < args.size(); ++i)
     {
@@ -233,6 +244,8 @@ int runScan(const std::vector<std::string>& args)
         else if (arg == "--no-recursive") options.recursive = false;
         else if (arg == "--max")          options.maxFiles = static_cast<size_t>(std::stoul(value()));
         else if (arg == "--skip-drums")   options.skipDrums = true;
+        else if (arg == "--style")        stylePath = value();
+        else if (arg == "--no-learn")     learn = false;
         else if (arg == "--quiet")        quiet = true;
         else
         {
@@ -248,8 +261,15 @@ int runScan(const std::vector<std::string>& args)
             std::cout << "  [" << done << "/" << total << "] " << relative << "\n";
     };
 
+    if (stylePath.empty())
+    {
+        const auto dot = indexPath.find_last_of('.');
+        stylePath = (dot == std::string::npos ? indexPath : indexPath.substr(0, dot)) + ".style.json";
+    }
+
     std::cout << "Scanning " << root << "\n";
-    const auto index = scanDirectory(root, options, progress, &errors);
+    StyleModel style;
+    const auto index = scanDirectory(root, options, progress, &errors, learn ? &style : nullptr);
 
     if (index.entries.empty())
     {
@@ -285,7 +305,31 @@ int runScan(const std::vector<std::string>& args)
     std::cout << "\n  Top folders    :";
     for (const auto& [tag, count] : tagHistogram(index, 8))
         std::cout << " " << tag << "(" << count << ")";
-    std::cout << "\n\nSearch it with:  harmonia-cli library --index " << indexPath << " --role bass\n";
+    std::cout << "\n";
+
+    if (learn && ! style.empty())
+    {
+        if (! saveStyleModel(stylePath, style, error))
+        {
+            std::cerr << "Error: " << error << "\n";
+            return 1;
+        }
+        std::cout << "\nLearned a style model into " << stylePath << "\n"
+                  << "  " << style.summary() << "\n";
+
+        const auto top = style.topProgressions(5);
+        if (! top.empty())
+        {
+            std::cout << "  Your most common progressions:\n";
+            for (const auto& [progression, count] : top)
+                std::cout << "    " << std::left << std::setw(40) << progression << count << " clips\n";
+        }
+        std::cout << "\nWrite in your own style with:\n"
+                  << "  harmonia-cli --preset melodic-lift --key \"F minor\" --style " << stylePath
+                  << " --part bass,melody\n";
+    }
+
+    std::cout << "\nSearch the catalogue with:  harmonia-cli library --index " << indexPath << " --role bass\n";
 
     if (! errors.empty())
     {
@@ -308,6 +352,8 @@ int runLibrary(const std::vector<std::string>& args)
     LibraryQuery query;
     query.limit = 40;
     bool showTags = false;
+    bool showProgressions = false;
+    std::string stylePath;
 
     for (size_t i = 0; i < args.size(); ++i)
     {
@@ -322,6 +368,8 @@ int runLibrary(const std::vector<std::string>& args)
         else if (arg == "--with-drums")  query.excludeDrums = false;
         else if (arg == "--limit")       query.limit = static_cast<size_t>(std::stoul(value()));
         else if (arg == "--tags")        showTags = true;
+        else if (arg == "--progressions") showProgressions = true;
+        else if (arg == "--style")       stylePath = value();
         else if (arg == "--key")
         {
             Key key;
@@ -347,6 +395,33 @@ int runLibrary(const std::vector<std::string>& args)
             std::cerr << "Unknown library option: " << arg << "\n";
             return 1;
         }
+    }
+
+    if (showProgressions)
+    {
+        if (stylePath.empty())
+        {
+            const auto dot = indexPath.find_last_of('.');
+            stylePath = (dot == std::string::npos ? indexPath : indexPath.substr(0, dot)) + ".style.json";
+        }
+
+        StyleModel style;
+        std::string styleError;
+        if (! loadStyleModel(stylePath, style, styleError))
+        {
+            std::cerr << "Error: " << styleError << "\n"
+                      << "Run a scan first:  harmonia-cli scan /path/to/midis\n";
+            return 1;
+        }
+
+        const auto top = style.topProgressions(static_cast<size_t>(query.limit));
+        std::cout << "Mined from " << style.clipsLearned << " of your clips\n\n";
+        for (const auto& [progression, count] : top)
+            std::cout << "  " << std::left << std::setw(46) << progression << count << " clips\n";
+        std::cout << "\nUse one with:  harmonia-cli --progression \"" 
+                  << (top.empty() ? std::string("i | VI | III | VII") : top.front().first)
+                  << "\" --key \"F minor\" --part pad,melody\n";
+        return top.empty() ? 1 : 0;
     }
 
     LibraryIndex index;
@@ -389,6 +464,7 @@ int runGenerate(const std::vector<std::string>& args)
     std::string progressionText;
     std::string presetId;
     std::string grooveSpec;
+    std::string stylePath;
     std::string indexPath = "harmonia-library.json";
     std::vector<std::string> partNames { "pad", "melody" };
     int variations = 1;
@@ -412,6 +488,8 @@ int runGenerate(const std::vector<std::string>& args)
         else if (arg == "--progression")               progressionText = value();
         else if (arg == "--preset")                    presetId = value();
         else if (arg == "--groove")                    grooveSpec = value();
+        else if (arg == "--style")                     stylePath = value();
+        else if (arg == "--style-amount")              generateOptions.styleAmount = std::stof(value());
         else if (arg == "--index")                     indexPath = value();
         else if (arg == "--out")                       outputDir = value();
         else if (arg == "--prefix")                    prefix = value();
@@ -557,6 +635,18 @@ int runGenerate(const std::vector<std::string>& args)
             generateOptions.useGrooveDonor = true;
         }
         std::cout << "  Groove from    : " << donorName << "\n";
+    }
+
+    StyleModel style;
+    if (! stylePath.empty())
+    {
+        if (! loadStyleModel(stylePath, style, error))
+        {
+            std::cerr << "Error: " << error << "\n";
+            return 1;
+        }
+        generateOptions.style = &style;
+        std::cout << "  Style         : " << style.summary() << "\n";
     }
 
     if (reharm > 0.0f)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -32,15 +33,23 @@ std::string describe(const T& value)
     return stream.str();
 }
 
-inline std::string describe(const std::vector<int>& values)
+template <typename Container>
+std::string describeList(const Container& values)
 {
     std::ostringstream stream;
     stream << "[";
-    for (size_t i = 0; i < values.size(); ++i)
-        stream << (i > 0 ? ", " : "") << values[i];
+    bool first = true;
+    for (const auto& value : values)
+    {
+        stream << (first ? "" : ", ") << value;
+        first = false;
+    }
     stream << "]";
     return stream.str();
 }
+
+inline std::string describe(const std::vector<int>& values) { return describeList(values); }
+inline std::string describe(const std::set<int>& values) { return describeList(values); }
 
 } // namespace testing
 

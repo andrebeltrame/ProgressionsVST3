@@ -111,7 +111,8 @@ const LibraryEntry* LibraryIndex::find(const std::string& relative) const
 LibraryIndex scanDirectory(const std::string& root,
                            const ScanOptions& options,
                            const std::function<void(const std::string&, size_t, size_t)>& progress,
-                           std::vector<std::string>* errors)
+                           std::vector<std::string>* errors,
+                           StyleModel* styleModel)
 {
     LibraryIndex index;
 
@@ -212,8 +213,18 @@ LibraryIndex scanDirectory(const std::string& root,
             entry.roman = analysis.romanNumeralString();
         }
 
+        if (styleModel != nullptr && ! entry.drums)
+        {
+            learnFromClip(*styleModel, sequence, analysis, entry.folderRole);
+            if ((done % 500) == 0)
+                styleModel->prune(1024, 512, 800);
+        }
+
         index.entries.push_back(std::move(entry));
     }
+
+    if (styleModel != nullptr)
+        styleModel->prune();
 
     return index;
 }

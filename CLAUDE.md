@@ -19,7 +19,7 @@ whenever the change is not specifically about the plugin UI or its audio thread.
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 
-./build/tests/harmonia_tests              # all 54 tests, ~20ms
+./build/tests/harmonia_tests              # all 65 tests, ~30ms
 ./build/tests/harmonia_tests Progression  # only tests whose name contains this
 ```
 
@@ -71,6 +71,21 @@ ways to produce one:
 progression and any written one side by side so `resetProgression()` can go back.
 When a clip is loaded, a written progression replaces only the chords — tempo,
 meter, length, groove and detected role stay.
+
+### The style model is statistics, never phrases
+
+`core/src/StyleModel.cpp` learns from a whole MIDI collection during the same
+pass that builds the library index. It stores counts only — bar onset masks per
+role, scale-step transitions, intervals over the chord root by metric strength,
+voicing spacings, progression frequencies. It must stay that way: no stored
+phrases, so the model file carries no one's material and generation cannot
+plagiarise. Learned voicings are spacing templates that get snapped onto the
+chord actually playing, which is what keeps a major shape from dragging a major
+third onto a minor chord.
+
+Every generator has a fallback path for when the corpus is empty or
+`styleAmount` is low. Keep it that way — the engine has to work with no library
+at all.
 
 ### Generation is deterministic
 

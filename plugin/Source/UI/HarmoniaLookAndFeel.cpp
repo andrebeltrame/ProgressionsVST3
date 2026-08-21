@@ -27,8 +27,14 @@ HarmoniaLookAndFeel::HarmoniaLookAndFeel()
 }
 
 void HarmoniaLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height,
-                                           float sliderPos, float startAngle, float endAngle, juce::Slider&)
+                                           float sliderPos, float startAngle, float endAngle, juce::Slider& slider)
 {
+    // A disabled control has to look disabled, or the greyed-out label is the
+    // only hint and people keep dragging it.
+    const bool enabled = slider.isEnabled();
+    const auto valueColour = enabled ? accent : outline.brighter(0.1f);
+    const auto pointerColour = enabled ? text : textDim.withAlpha(0.5f);
+
     const auto bounds = juce::Rectangle<int>(x, y, width, height).toFloat().reduced(3.0f);
     const auto radius = juce::jmin(bounds.getWidth(), bounds.getHeight()) / 2.0f;
     const auto centre = bounds.getCentre();
@@ -46,7 +52,7 @@ void HarmoniaLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int 
         juce::Path value;
         value.addCentredArc(centre.x, centre.y, radius - thickness * 0.5f, radius - thickness * 0.5f,
                             0.0f, startAngle, angle, true);
-        g.setColour(accent);
+        g.setColour(valueColour);
         g.strokePath(value, juce::PathStrokeType(thickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
@@ -54,7 +60,7 @@ void HarmoniaLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int 
     pointer.startNewSubPath(centre.x, centre.y - radius * 0.28f);
     pointer.lineTo(centre.x, centre.y - radius + thickness * 1.4f);
     pointer.applyTransform(juce::AffineTransform::rotation(angle, centre.x, centre.y));
-    g.setColour(text);
+    g.setColour(pointerColour);
     g.strokePath(pointer, juce::PathStrokeType(2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
@@ -82,10 +88,12 @@ void HarmoniaLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton
     const auto bounds = button.getLocalBounds().toFloat();
     const float boxSize = juce::jmin(16.0f, bounds.getHeight() - 2.0f);
     const juce::Rectangle<float> box(bounds.getX(), bounds.getCentreY() - boxSize * 0.5f, boxSize, boxSize);
+    const bool enabled = button.isEnabled();
+    const auto tick = enabled ? accent : outline.brighter(0.1f);
 
-    g.setColour(button.getToggleState() ? accent : panelLight);
+    g.setColour(button.getToggleState() ? tick : panelLight);
     g.fillRoundedRectangle(box, 4.0f);
-    g.setColour(shouldDrawButtonAsHighlighted ? accent.withAlpha(0.7f) : outline);
+    g.setColour(shouldDrawButtonAsHighlighted && enabled ? accent.withAlpha(0.7f) : outline);
     g.drawRoundedRectangle(box, 4.0f, 1.0f);
 
     if (button.getToggleState())

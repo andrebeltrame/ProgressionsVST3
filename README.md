@@ -20,6 +20,7 @@ arpejos e plucks em cima dela — e você arrasta o resultado direto para o DAW.
 - [O que ele faz](#o-que-ele-faz)
 - [Escrevendo a progressão](#escrevendo-a-progressão)
 - [Sua biblioteca de MIDIs](#sua-biblioteca-de-midis)
+- [O cérebro: escrever no seu estilo](#o-cérebro-escrever-no-seu-estilo)
 - [Instalando](#instalando)
 - [Rodando na sua máquina](#rodando-na-sua-máquina)
 - [Usando no DAW](#usando-no-daw)
@@ -50,6 +51,10 @@ arpejos e plucks em cima dela — e você arrasta o resultado direto para o DAW.
 | **Bass** | Fundamental com quintas, oitavas e aproximações cromáticas para o próximo acorde. |
 | **Arp** | Notas do acorde em Up / Down / Up-Down / Down-Up / Converge / Random. |
 | **Pluck** | Notas curtas do acorde em cima do groove, com saltos e oitavas dobradas nos acentos — o pluck de house. |
+
+Com um *style model* carregado, todas essas partes passam a usar os compassos,
+os movimentos e os espaçamentos aprendidos da sua coleção — veja
+[O cérebro](#o-cérebro-escrever-no-seu-estilo).
 
 **Reharmonização** — um clique troca acordes por relativas, dominantes
 secundárias, substituições de trítono e empréstimo modal. Cada acorde também
@@ -155,6 +160,89 @@ harmonia-cli --preset deep-rhodes --key "F minor" \
 
 O `--groove` aceita tanto um caminho `.mid` quanto um pedaço de nome/pasta que é
 procurado no índice.
+
+---
+
+## O cérebro: escrever no seu estilo
+
+Catalogar é uma coisa; **aprender** é outra. O mesmo `scan` que monta o índice
+também constrói um *style model*: uma destilação estatística de como a sua
+coleção se comporta.
+
+```bash
+harmonia-cli scan "/Volumes/HD Externo/MIDI" --index ~/harmonia-library.json
+```
+
+```
+Learned a style model into /Users/você/harmonia-library.style.json
+  2841 clips, 11204 bars, 312 melody bars, 198 bass bars, 274 pluck bars,
+  156 chords bars, 141 voicings, 200 progressions
+  Your most common progressions:
+    i | VI | III | VII                      184 clips
+    i | VII | VI | VII                      121 clips
+```
+
+### O que ele aprende
+
+| | |
+|---|---|
+| **Compassos** | Cada compasso da sua coleção vira uma máscara de 16 semicolcheias, com velocity e duração por posição — separado por papel (bass, lead, pluck, chords, arp). É por isso que um baixo gerado cai nas mesmas semicolcheias que os seus. |
+| **Movimento melódico** | Cadeia de Markov sobre **passos de escala**, não sobre notas: `passo anterior → próximo passo`. Como é medido em graus, transporta para qualquer tom. |
+| **Intervalos sobre a fundamental** | O que você toca sobre a raiz, separado pela força métrica da semicolcheia (cabeça de compasso / tempo / contratempo de colcheia / de semicolcheia). É o que faz um baixo gerado ter o *seu* vocabulário de oitavas e quintas. |
+| **Espaçamento de acordes** | As distâncias entre as vozes dos seus pads. |
+| **Progressões** | Quais encadeamentos aparecem na sua coleção, e com que frequência. |
+
+### O que ele **não** faz
+
+Ele **não guarda frases suas**. O que fica no arquivo são contagens — quantas
+vezes um compasso tinha ataque na semicolcheia 7, quantas vezes um passo de +2
+foi seguido de −1. Nada é reproduzido literalmente, e o `.style.json` não contém
+MIDI: dá para versionar e compartilhar sem carregar material de ninguém junto.
+
+Os espaçamentos de acorde também não trazem harmonia errada: eles são aplicados
+como *molde* e depois encaixados nas notas do acorde que está tocando. Um
+espaçamento tirado de um acorde maior, usado sobre um menor, mantém a abertura e
+o registro — mas a terça continua sendo a do acorde certo.
+
+### Usando
+
+No **CLI**:
+
+```bash
+harmonia-cli --preset melodic-lift --key "F minor"     --style ~/harmonia-library.style.json     --part bass,melody,pluck --out ideias/
+```
+
+`--style-amount 0.5` mistura meio a meio com o feel interno; `0` ignora o
+modelo. E para ver o que a sua coleção anda tocando:
+
+```bash
+harmonia-cli library --index ~/harmonia-library.json --progressions
+```
+
+No **plugin**: **Learn from my library…** carrega o `.style.json`, o toggle
+**Write in my style** liga, e o botão **My style** dosa o quanto. O caminho do
+modelo fica salvo no projeto.
+
+### Um cérebro por gênero
+
+O modelo é global — ele mistura tudo que você mandou escanear. Se você quiser
+que Deep House e Melodic House não se contaminem, escaneie separado:
+
+```bash
+harmonia-cli scan "/Volumes/HD/MIDI/Deep House"    --index ~/deep.json
+harmonia-cli scan "/Volumes/HD/MIDI/Melodic House" --index ~/melodic.json
+```
+
+Cada scan produz o seu próprio `.style.json`, e você escolhe qual carregar.
+
+### Uma ressalva honesta
+
+Testei isso contra corpora sintéticos que eu mesmo construí — sei que o modelo
+aprende e reproduz o que foi ensinado (há testes que provam isso: um corpus que
+só toca nas semicolcheias 0 e 6 gera baixos só nessas posições). O que eu **não**
+pude testar é como soa com MIDI de house de verdade, porque o seu HD não está
+aqui. É bem possível que a dosagem precise de ajuste depois do primeiro contato
+com material real — me diga o que sair.
 
 ### Onde guardar os MIDIs
 
@@ -284,6 +372,7 @@ Analysed resources/examples/bass_loop.mid
 ```
 
 Principais opções de geração: `--part`, `--progression`, `--preset`, `--groove`,
+`--style`, `--style-amount`,
 `--variations`, `--bars`, `--bpm`, `--density`, `--complexity`, `--humanize`,
 `--swing`, `--octave`, `--voices`, `--seed`, `--key`, `--reharm`,
 `--chords-per-bar`, `--no-follow`, `--no-avoid`, `--info`.
@@ -295,9 +384,10 @@ Principais opções de geração: `--part`, `--progression`, `--preset`, `--groo
 
 ```
 core/      motor em C++17, sem dependência nenhuma (nem JUCE)
-           MIDI, teoria, análise, geradores, progressões, presets, biblioteca
+           MIDI, teoria, análise, geradores, progressões, presets,
+           biblioteca e o modelo de estilo
 cli/       front end de linha de comando
-tests/     54 testes unitários do motor
+tests/     65 testes unitários do motor
 plugin/    invólucro JUCE: processador, editor, componentes de UI
            tests/ traz um smoke test headless do plugin
 resources/ clipes MIDI de exemplo

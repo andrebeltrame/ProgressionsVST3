@@ -26,6 +26,8 @@ constexpr const char* level       = "level";
 constexpr const char* hostSync    = "hostSync";
 constexpr const char* midiChannel = "midiChannel";
 constexpr const char* harmonicRhythm = "harmonicRhythm";
+constexpr const char* useStyle = "useStyle";
+constexpr const char* styleAmount = "styleAmount";
 } // namespace ParamID
 
 /** The plugin: holds the analysis engine, renders the generated part and plays
@@ -84,6 +86,15 @@ public:
     juce::String getProgressionText() const;
     bool hasWrittenProgression() const noexcept { return engine.hasWrittenProgression(); }
 
+    /** Load the style model that `harmonia-cli scan` learned from your own
+        collection, so the generators write with your habits. */
+    bool loadStyleModelFile(const juce::File& file);
+    void clearStyleModel();
+    bool hasStyleModel() const noexcept { return ! styleModel.empty(); }
+    juce::String styleSummary() const;
+    int styleClipCount() const noexcept { return styleModel.clipsLearned; }
+    juce::File styleModelFile() const { return styleFile; }
+
     /** Pin the key instead of letting the detector choose. */
     void setForcedKey(bool forced, int tonic, harmonia::ScaleType scale);
     bool isKeyForced() const noexcept { return keyForced; }
@@ -122,6 +133,8 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
 
     harmonia::Engine engine;
+    harmonia::StyleModel styleModel;
+    juce::File styleFile;
     harmonia::NoteSequence generated;
     juce::String sourceName;
     juce::String lastError;

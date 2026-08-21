@@ -6,6 +6,7 @@ add_executable(harmonia_tests
     TestGenerators.cpp
     TestProgression.cpp
     TestLibrary.cpp
+    TestStyleModel.cpp
 )
 
 target_link_libraries(harmonia_tests PRIVATE harmonia_core)

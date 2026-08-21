@@ -2,6 +2,7 @@
 #include "PluginEditor.h"
 
 #include "harmonia/MidiFile.h"
+#include "harmonia/StyleModel.h"
 
 using namespace harmonia;
 
@@ -87,6 +88,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout HarmoniaProcessor::createLay
     layout.add(std::make_unique<AudioParameterInt>(ParameterID { ParamID::midiChannel, 1 }, "MIDI Channel", 1, 16, 1));
     layout.add(std::make_unique<AudioParameterChoice>(ParameterID { ParamID::harmonicRhythm, 1 }, "Harmonic Rhythm",
                                                       kHarmonyChoices, 0));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { ParamID::useStyle, 1 }, "Use My Style", true));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { ParamID::styleAmount, 1 }, "Style Amount",
+                                                     NormalisableRange<float> { 0.0f, 1.0f }, 1.0f, percentAttributes));
 
     return layout;
 }
@@ -98,7 +102,7 @@ HarmoniaProcessor::HarmoniaProcessor()
     for (const char* id : { ParamID::part, ParamID::density, ParamID::complexity, ParamID::humanize,
                             ParamID::swing, ParamID::octave, ParamID::voices, ParamID::bars,
                             ParamID::follow, ParamID::avoid, ParamID::arpPattern,
-                            ParamID::harmonicRhythm })
+                            ParamID::harmonicRhythm, ParamID::useStyle, ParamID::styleAmount })
         apvts.addParameterListener(id, this);
 
     previewSynth.addSound(new PreviewSound());
@@ -113,7 +117,7 @@ HarmoniaProcessor::~HarmoniaProcessor()
     for (const char* id : { ParamID::part, ParamID::density, ParamID::complexity, ParamID::humanize,
                             ParamID::swing, ParamID::octave, ParamID::voices, ParamID::bars,
                             ParamID::follow, ParamID::avoid, ParamID::arpPattern,
-                            ParamID::harmonicRhythm })
+                            ParamID::harmonicRhythm, ParamID::useStyle, ParamID::styleAmount })
         apvts.removeParameterListener(id, this);
 
     if (dragFile.existsAsFile())
@@ -296,6 +300,12 @@ harmonia::GenerateOptions HarmoniaProcessor::currentOptions() const
     options.avoidSourceCollisions = apvts.getRawParameterValue(ParamID::avoid)->load() > 0.5f;
     options.arpPattern = static_cast<ArpPattern>(juce::jlimit(0, 5, static_cast<int>(apvts.getRawParameterValue(ParamID::arpPattern)->load())));
     options.channel = 0;
+
+    if (! styleModel.empty() && apvts.getRawParameterValue(ParamID::useStyle)->load() > 0.5f)
+    {
+        options.style = &styleModel;
+        options.styleAmount = apvts.getRawParameterValue(ParamID::styleAmount)->load();
+    }
     return options;
 }
 
@@ -411,6 +421,36 @@ juce::String HarmoniaProcessor::getProgressionText() const
     if (engine.hasWrittenProgression())
         return juce::String(engine.analysis().progressionString());
     return engine.analysis().valid ? juce::String(engine.analysis().progressionString()) : juce::String();
+}
+
+bool HarmoniaProcessor::loadStyleModelFile(const juce::File& file)
+{
+    std::string error;
+    harmonia::StyleModel loaded;
+    if (! harmonia::loadStyleModel(file.getFullPathName().toStdString(), loaded, error))
+    {
+        lastError = error;
+        sendChangeMessage();
+        return false;
+    }
+
+    styleModel = std::move(loaded);
+    styleFile = file;
+    lastError.clear();
+    regenerate();
+    return true;
+}
+
+void HarmoniaProcessor::clearStyleModel()
+{
+    styleModel = harmonia::StyleModel {};
+    styleFile = juce::File();
+    regenerate();
+}
+
+juce::String HarmoniaProcessor::styleSummary() const
+{
+    return styleModel.empty() ? juce::String() : juce::String(styleModel.summary());
 }
 
 void HarmoniaProcessor::setForcedKey(bool forced, int tonic, harmonia::ScaleType scale)
@@ -541,6 +581,8 @@ void HarmoniaProcessor::getStateInformation(juce::MemoryBlock& destData)
     state.setProperty("seed", static_cast<juce::int64>(seed), nullptr);
     state.setProperty("sourceName", sourceName, nullptr);
     state.setProperty("keyForced", keyForced, nullptr);
+    if (styleFile != juce::File())
+        state.setProperty("styleFile", styleFile.getFullPathName(), nullptr);
     state.setProperty("keyTonic", keyTonic, nullptr);
     state.setProperty("keyScale", static_cast<int>(keyScale), nullptr);
     if (engine.hasWrittenProgression())
@@ -576,6 +618,19 @@ void HarmoniaProcessor::setStateInformation(const void* data, int sizeInBytes)
                 sourceMidiData = block;
         }
     }
+
+    const juce::File savedStyle(state.getProperty("styleFile", "").toString());
+    if (savedStyle.existsAsFile())
+    {
+        std::string styleError;
+        harmonia::StyleModel loaded;
+        if (harmonia::loadStyleModel(savedStyle.getFullPathName().toStdString(), loaded, styleError))
+        {
+            styleModel = std::move(loaded);
+            styleFile = savedStyle;
+        }
+    }
+    state.removeProperty("styleFile", nullptr);
 
     keyForced = state.getProperty("keyForced", false);
     keyTonic = juce::jlimit(0, 11, static_cast<int>(state.getProperty("keyTonic", 9)));

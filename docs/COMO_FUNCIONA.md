@@ -181,6 +181,61 @@ O índice é JSON, escrito e lido por `core/src/Json.cpp` (um parser mínimo,
 ~300 linhas, para não trazer dependência). Dá para abrir no editor, versionar e
 processar com `jq`.
 
+## O modelo de estilo
+
+`core/src/StyleModel.cpp` é a camada que aprende. O `scan` já lê cada arquivo
+uma vez, então o aprendizado acontece na mesma passada (`scanDirectory` aceita
+um `StyleModel*`) — reler um HD inteiro seria a parte cara.
+
+De cada clipe saem cinco coisas:
+
+1. **Um `RhythmPattern` por compasso** — máscara de 16 bits com os ataques, mais
+   velocity e duração por posição. Vai para o banco do papel do clipe (o nome da
+   pasta ganha da detecção: `.../Plucks/` vira `pluck` mesmo que a análise diga
+   `lead`). Compassos iguais viram o mesmo registro com o contador somado.
+2. **Passos de escala** — `absoluteDegree()` converte a altura em grau contando
+   as oitavas (uma oitava = 7 passos), e o que se guarda são as *diferenças*.
+   Por serem graus, transportam para qualquer tom; notas cromáticas quebram a
+   cadeia em vez de virar ruído. Guarda-se a marginal e a transição de ordem 1.
+3. **Intervalos sobre a fundamental**, separados pela força métrica da
+   semicolcheia (`slotClassFor`: 0 = cabeça do compasso, 1 = tempo, 2 =
+   contratempo de colcheia, 3 = de semicolcheia).
+4. **Espaçamentos de acorde** — as vozes soando no início de cada segmento,
+   medidas a partir da fundamental abaixo da voz mais grave, para que inversões
+   mantenham o formato.
+5. **A progressão** em graus.
+
+Nada disso é uma frase. São contagens, e por isso o modelo é pequeno,
+transportável e não carrega material de ninguém.
+
+### Como os geradores consultam o modelo
+
+- `buildOnsets()` sorteia um compasso do banco do papel em vez de sortear
+  semicolcheia por semicolcheia. A escolha é ponderada por `sqrt(frequência)`
+  vezes uma gaussiana sobre a distância entre a quantidade de ataques do
+  compasso e a que a knob **Density** pediu — assim o controle continua
+  significando alguma coisa.
+- A melodia troca a tabela fixa de passos por `sampleStep(modelo, passoAnterior)`.
+- O baixo ganha um caminho próprio (`writeLearnedBass`): compassos do banco e
+  intervalo sobre a fundamental sorteado pela classe métrica da posição. Um
+  guarda-corpo puxa de volta para a fundamental a nota que não pertence nem ao
+  acorde nem à tonalidade, em 70% dos casos.
+- Pads e acordes usam `learnedVoicing()`: o espaçamento vem do corpus, é
+  deslocado por oitavas até caber no registro e então **cada voz é encaixada na
+  nota do acorde mais próxima**. É isso que impede um molde de acorde maior de
+  arrastar uma terça maior para cima de um acorde menor.
+
+Tudo tem plano B: sem corpus, ou com `styleAmount` baixo, cada gerador volta
+para a heurística embutida. E `useStyle()` consulta o RNG, então a mesma semente
+com e sem modelo produz resultados diferentes — o que é o esperado.
+
+### Limites
+
+O modelo é global: ele mistura tudo que foi escaneado numa passada. Para separar
+Deep House de Melodic House, escaneie as pastas separadamente e carregue o
+`.style.json` de cada uma. Ordem 1 na cadeia de passos é uma escolha de robustez
+— ordem 2 precisaria de um corpus bem maior para não decorar.
+
 ## A camada do plugin
 
 `HarmoniaProcessor` guarda o `harmonia::Engine`, os parâmetros (APVTS) e o

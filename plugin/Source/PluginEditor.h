@@ -41,6 +41,7 @@ private:
     void refresh();
     void showLoadDialog();
     void showExportDialog();
+    void showStyleDialog();
     void applyTypedProgression();
     void applyKeyFromControls();
     void refreshProgressionField();
@@ -59,7 +60,7 @@ private:
     juce::OwnedArray<juce::TextButton> partButtons;
     std::unique_ptr<juce::ParameterAttachment> partAttachment;
 
-    Knob densityKnob, complexityKnob, humanizeKnob, swingKnob, octaveKnob, voicesKnob;
+    Knob densityKnob, complexityKnob, humanizeKnob, swingKnob, octaveKnob, voicesKnob, styleKnob;
 
     juce::ComboBox lengthBox, arpBox, harmonyBox, keyRootBox, keyModeBox;
     juce::Label lengthLabel { {}, "Length" }, arpLabel { {}, "Arp shape" },
@@ -75,11 +76,14 @@ private:
     juce::ToggleButton previewToggle { "Preview sound" };
     juce::Slider levelSlider;
     juce::Label levelLabel { {}, "Preview level" };
+    juce::TextButton styleButton { "Learn from my library..." };
+    juce::ToggleButton styleToggle { "Write in my style" };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> lengthAttachment, arpAttachment,
                                                                             harmonyAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> followAttachment, avoidAttachment,
-                                                                          syncAttachment, previewAttachment;
+                                                                          syncAttachment, previewAttachment,
+                                                                          styleAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> levelAttachment;
 
     juce::TextButton diceButton { "New idea" }, reharmButton { "Reharmonise" },

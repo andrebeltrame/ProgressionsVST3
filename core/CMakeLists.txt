@@ -8,6 +8,7 @@ add_library(harmonia_core STATIC
     src/Presets.cpp
     src/Json.cpp
     src/Library.cpp
+    src/StyleModel.cpp
     src/Engine.cpp
 )
 

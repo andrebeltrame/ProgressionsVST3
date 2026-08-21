@@ -1,6 +1,7 @@
 #pragma once
 
 #include "harmonia/Analysis.h"
+#include "harmonia/StyleModel.h"
 #include "harmonia/Types.h"
 
 #include <cstdint>
@@ -53,6 +54,13 @@ struct GenerateOptions
         your MIDI library. Overrides the source clip's groove when set. */
     bool useGrooveDonor = false;
     RhythmProfile grooveDonor {};
+
+    /** Everything learned from your own collection: which bars you play, how
+        your lines move, what you put over a root. Borrowed pointer - it only has
+        to outlive the generate() call. */
+    const StyleModel* style = nullptr;
+    /** How often the learned material is used instead of the built-in feel. */
+    float styleAmount = 1.0f;
     /** Keep the generated line out of the source's way (register + unisons). */
     bool avoidSourceCollisions = true;
     /** Resolve the final note/chord to something stable. */
