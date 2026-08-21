@@ -465,7 +465,7 @@ StyleModel buildStyleModel(const std::vector<const LibraryEntry*>& entries,
             continue;
         }
 
-        learnFromClip(model, sequence, analyze(sequence), entry->folderRole);
+        learnFromClip(model, sequence, analyze(sequence), entry->effectiveRole());
 
         // Keep memory bounded while working through a very large collection.
         if ((done % 500) == 0)

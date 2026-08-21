@@ -19,7 +19,7 @@ whenever the change is not specifically about the plugin UI or its audio thread.
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 
-./build/tests/harmonia_tests              # all 76 tests, ~60ms
+./build/tests/harmonia_tests              # all 77 tests, ~60ms
 ./build/tests/harmonia_tests Progression  # only tests whose name contains this
 ```
 
@@ -107,6 +107,12 @@ say so.
 `saveIndex` streams JSON straight to the file for the same reason - a few
 hundred thousand entries will not fit as a document tree plus a serialised
 string.
+
+`LibraryEntry::effectiveRole()` is the single answer to "what is this clip":
+the folder's verdict when it has one, the detected role otherwise. Both
+`queryLibrary` and the style learner go through it, so a query for bass cannot
+end up training the melody bank - they disagreed once and it was invisible in
+the output.
 
 Files are parsed across threads, split into one fixed block per thread rather
 than pulled from a shared queue, so the index and the style model come out

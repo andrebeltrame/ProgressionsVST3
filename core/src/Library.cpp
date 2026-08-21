@@ -177,6 +177,22 @@ std::string roleForPath(const std::string& relativePath)
     return roleFromPathImpl(fs::path(relativePath));
 }
 
+std::string LibraryEntry::effectiveRole() const
+{
+    if (! folderRole.empty())
+        return folderRole;
+
+    switch (role)
+    {
+        case SourceRole::Bass:   return "bass";
+        case SourceRole::Chords: return "chords";
+        case SourceRole::Lead:   return "lead";
+        case SourceRole::Arp:    return "arp";
+        case SourceRole::Unknown:
+        default:                 return {};
+    }
+}
+
 std::string LibraryEntry::summary() const
 {
     std::string out = relativePath;
@@ -429,7 +445,7 @@ LibraryIndex scanDirectory(const std::string& root,
 
             if (styleModel != nullptr && ! entry.drums)
             {
-                learnFromClip(partial.model, sequence, analysis, entry.folderRole);
+                learnFromClip(partial.model, sequence, analysis, entry.effectiveRole());
                 if (((i - from) % 500) == 499)
                     partial.model.prune(1024, 512, 800);
             }
@@ -649,12 +665,8 @@ std::vector<const LibraryEntry*> queryLibrary(const LibraryIndex& index, const L
                 continue;
         }
 
-        if (! wantedRole.empty())
-        {
-            const auto detected = toLower(toString(entry.role));
-            if (! contains(detected, wantedRole) && entry.folderRole != wantedRole)
-                continue;
-        }
+        if (! wantedRole.empty() && ! contains(entry.effectiveRole(), wantedRole))
+            continue;
 
         if (query.tonic >= 0 && entry.key.tonic != query.tonic)
             continue;

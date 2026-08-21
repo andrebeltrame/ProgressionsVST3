@@ -34,6 +34,11 @@ struct LibraryEntry
     std::string roman;
     RhythmProfile rhythm;
 
+    /** What this clip counts as, in one word: the folder's verdict when it has
+        one, otherwise the detected role. Filtering and learning both go through
+        this, so a query for bass cannot end up training the melody bank. */
+    std::string effectiveRole() const;
+
     /** How the entry reads in one line, for listings. */
     std::string summary() const;
 };

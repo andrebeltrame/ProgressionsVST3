@@ -3,6 +3,7 @@
 
 #include "harmonia/Json.h"
 #include "harmonia/Library.h"
+#include "harmonia/StyleModel.h"
 #include "harmonia/MidiFile.h"
 
 #include "harmonia/Engine.h"
@@ -308,6 +309,40 @@ TEST(PackTitlesDoNotDecideTheRole)
 
     // The nearest folder wins over a more distant one.
     CHECK_EQ(roleForPath("Leads/Bass/x.mid"), std::string("bass"));
+}
+
+TEST(FilterAndLearnerAgreeOnWhatAClipIs)
+{
+    // The folder has the last word; the detector fills in when it is silent.
+    LibraryEntry fromFolder;
+    fromFolder.folderRole = "pluck";
+    fromFolder.role = SourceRole::Lead;
+    CHECK_EQ(fromFolder.effectiveRole(), std::string("pluck"));
+
+    LibraryEntry fromDetection;
+    fromDetection.role = SourceRole::Bass;
+    CHECK_EQ(fromDetection.effectiveRole(), std::string("bass"));
+
+    LibraryEntry silent;
+    silent.role = SourceRole::Unknown;
+    CHECK_EQ(silent.effectiveRole(), std::string(""));
+
+    // A query for one role must not sweep in clips that will train another
+    // bank: filtering and learning have to use the same answer.
+    const TemporaryLibrary library;
+    const auto index = scanDirectory(library.root.string(), {}, {}, nullptr);
+
+    LibraryQuery bassOnly;
+    bassOnly.role = "bass";
+    const auto matches = queryLibrary(index, bassOnly);
+    CHECK(! matches.empty());
+    for (const auto* entry : matches)
+        CHECK(entry->effectiveRole().find("bass") != std::string::npos);
+
+    const auto model = buildStyleModel(matches, {}, nullptr);
+    CHECK(model.hasPatternsFor(StyleRole::Bass));
+    CHECK(! model.hasPatternsFor(StyleRole::Melody));
+    CHECK(! model.hasPatternsFor(StyleRole::Chords));
 }
 
 TEST(QueryingTheLibrary)
