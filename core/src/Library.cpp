@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <iterator>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -41,8 +42,26 @@ bool isSystemName(const std::string& name)
         || name == "$RECYCLE.BIN";
 }
 
-/** Recognises what a folder is for from its name: ".../Deep House/Bass/..." */
-std::string roleFromPath(const std::string& lowerPath)
+/** Genre and pack names are not roles. "Melodic House & Techno" must not make
+    every clip in the pack a lead, and "Deep House" is not a bassline. */
+bool looksLikeAPackName(const std::string& lowerComponent)
+{
+    static const char* markers[] = {
+        "house", "techno", "trance", "garage", "disco", "progressive", "tech ",
+        "vol", "pack", "midi", "sample", "loop", "collection", "edition", "bundle",
+        ".com", "presets"
+    };
+
+    for (const char* marker : markers)
+        if (contains(lowerComponent, marker))
+            return true;
+
+    // Role folders are called "Bass" or "Leads"; packs have long titles.
+    return lowerComponent.size() > 20;
+}
+
+/** Role words as they appear in folder names. */
+const std::pair<const char*, const char*>* roleKeywords(size_t& count)
 {
     static const std::pair<const char*, const char*> table[] = {
         { "drum", "drums" }, { "perc", "drums" }, { "kick", "drums" },
@@ -54,10 +73,62 @@ std::string roleFromPath(const std::string& lowerPath)
         { "pad", "pad" }, { "chord", "chords" }, { "keys", "chords" },
         { "piano", "chords" }, { "rhodes", "chords" }, { "stab", "chords" },
     };
+    count = std::size(table);
+    return table;
+}
 
-    for (const auto& [needle, role] : table)
-        if (contains(lowerPath, needle))
+/** The short prefixes MIDI packs put on filenames: "BS Sheliak Em.mid". */
+std::string roleFromFilenamePrefix(const std::string& lowerStem)
+{
+    static const std::pair<const char*, const char*> table[] = {
+        { "bs", "bass" },   { "bl", "bass" },   { "sub", "bass" },
+        { "ld", "lead" },   { "mel", "lead" },  { "top", "lead" },
+        { "ch", "chords" }, { "chd", "chords" }, { "crd", "chords" }, { "kb", "chords" },
+        { "pd", "pad" },    { "pad", "pad" },
+        { "pl", "pluck" },  { "plk", "pluck" },
+        { "arp", "arp" },   { "seq", "arp" },
+        { "dr", "drums" },  { "pc", "drums" },
+    };
+
+    const auto end = lowerStem.find_first_of(" _-.");
+    if (end == std::string::npos || end == 0)
+        return {};
+
+    const auto prefix = lowerStem.substr(0, end);
+    for (const auto& [token, role] : table)
+        if (prefix == token)
             return role;
+    return {};
+}
+
+std::string roleFromPathImpl(const fs::path& relative)
+{
+    const auto stem = toLower(relative.stem().string());
+
+    size_t keywordCount = 0;
+    const auto* keywords = roleKeywords(keywordCount);
+
+    // The file name is the most specific clue there is.
+    if (auto role = roleFromFilenamePrefix(stem); ! role.empty())
+        return role;
+    for (size_t i = 0; i < keywordCount; ++i)
+        if (contains(stem, keywords[i].first))
+            return keywords[i].second;
+
+    // Then the folders, deepest first, ignoring anything that reads as a pack
+    // title rather than a role.
+    std::vector<std::string> components;
+    for (const auto& part : relative.parent_path())
+        components.push_back(toLower(part.string()));
+
+    for (auto it = components.rbegin(); it != components.rend(); ++it)
+    {
+        if (looksLikeAPackName(*it))
+            continue;
+        for (size_t i = 0; i < keywordCount; ++i)
+            if (contains(*it, keywords[i].first))
+                return keywords[i].second;
+    }
     return {};
 }
 
@@ -95,6 +166,11 @@ json::Value gridToJson(const RhythmProfile& rhythm)
 }
 
 } // namespace
+
+std::string roleForPath(const std::string& relativePath)
+{
+    return roleFromPathImpl(fs::path(relativePath));
+}
 
 std::string LibraryEntry::summary() const
 {
@@ -251,7 +327,7 @@ LibraryIndex scanDirectory(const std::string& root,
         entry.name = file.stem().string();
         entry.tags = tagsFromRelativePath(fs::path(relative));
         entry.drums = looksLikeDrums(sequence);
-        entry.folderRole = roleFromPath(toLower(relative));
+        entry.folderRole = roleForPath(relative);
         if (entry.folderRole == "drums")
             entry.drums = true;
 

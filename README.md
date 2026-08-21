@@ -123,6 +123,12 @@ com tonalidade, andamento, progressão, papel (bass/lead/pad/pluck/arp) e o perf
 rítmico de cada clipe. As pastas viram etiquetas, então a organização que você já
 tem no HD passa a ser pesquisável.
 
+O papel sai do caminho do arquivo, do indício mais próximo para o mais distante:
+primeiro o nome do arquivo (incluindo os prefixos que os packs usam — `BS`, `LD`,
+`CH`, `PD`, `ARP`, `PL`), depois a pasta onde ele está, depois a pasta acima.
+Títulos de pack e nomes de gênero são ignorados de propósito: `Melodic House &
+Techno` não faz de todo clipe do pack um lead, e `Deep House` não é um baixo.
+
 ```bash
 harmonia-cli scan "/Volumes/HD Externo/MIDI" --index ~/harmonia-library.json
 ```
@@ -421,7 +427,7 @@ core/      motor em C++17, sem dependência nenhuma (nem JUCE)
            MIDI, teoria, análise, geradores, progressões, presets,
            biblioteca e o modelo de estilo
 cli/       front end de linha de comando
-tests/     69 testes unitários do motor
+tests/     70 testes unitários do motor
 plugin/    invólucro JUCE: processador, editor, componentes de UI
            tests/ traz um smoke test headless do plugin
 resources/ clipes MIDI de exemplo

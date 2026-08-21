@@ -19,7 +19,7 @@ whenever the change is not specifically about the plugin UI or its audio thread.
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 
-./build/tests/harmonia_tests              # all 69 tests, ~30ms
+./build/tests/harmonia_tests              # all 70 tests, ~30ms
 ./build/tests/harmonia_tests Progression  # only tests whose name contains this
 ```
 

@@ -109,6 +109,12 @@ struct LibraryQuery
 
 std::vector<const LibraryEntry*> queryLibrary(const LibraryIndex& index, const LibraryQuery& query);
 
+/** What a clip is for, worked out from its path: the file name first (including
+    the "BS "/"LD " prefixes packs use), then the folders it sits in, deepest
+    first. Pack and genre titles are ignored - "Melodic House" is not a lead.
+    Returns an empty string when the path says nothing. */
+std::string roleForPath(const std::string& relativePath);
+
 /** Counts entries per tag, most common first - a quick map of a collection. */
 std::vector<std::pair<std::string, int>> tagHistogram(const LibraryIndex& index, size_t limit = 0);
 

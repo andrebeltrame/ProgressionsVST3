@@ -269,7 +269,8 @@ bool readFromMemory(const uint8_t* data, size_t size, NoteSequence& out, std::st
 
     if (out.notes.empty())
     {
-        error = "No notes found in this MIDI file.";
+        error = "No notes in this file (" + std::to_string(trackCount) + " track"
+              + (trackCount == 1 ? "" : "s") + ", " + std::to_string(size) + " bytes).";
         return false;
     }
 

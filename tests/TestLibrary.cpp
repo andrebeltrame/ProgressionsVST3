@@ -213,6 +213,31 @@ TEST(IndexSurvivesSaveAndLoad)
     fs::remove(indexPath);
 }
 
+TEST(PackTitlesDoNotDecideTheRole)
+{
+    // Folder names taken from real commercial MIDI packs: the genre in the pack
+    // title used to make every clip in it a lead.
+    const std::string pack = "Studio Tronnic - Melodic House & Techno for Diva/"
+                             "Studio Tronnic - Melodic House & Techno for Diva/";
+    CHECK_EQ(roleForPath(pack + "BS Sheliak Em.mid"), std::string("bass"));
+    CHECK_EQ(roleForPath(pack + "CH Roses A.mid"), std::string("chords"));
+    CHECK_EQ(roleForPath(pack + "LD Hook 3.mid"), std::string("lead"));
+    CHECK_EQ(roleForPath(pack + "ARP Vega.mid"), std::string("arp"));
+    CHECK_EQ(roleForPath(pack + "Sheliak Em.mid"), std::string(""));
+
+    // A real role folder still wins, however deep the pack title is.
+    CHECK_EQ(roleForPath("Deep House/Bass/loop.mid"), std::string("bass"));
+    CHECK_EQ(roleForPath("shop.basicwavez.com - Dreams Vol. 4 - MIDI/Plucks/a.mid"),
+             std::string("pluck"));
+
+    // A genre on its own says nothing about the part.
+    CHECK_EQ(roleForPath("Deep House/loop_one.mid"), std::string(""));
+    CHECK_EQ(roleForPath("Melodic House/track.mid"), std::string(""));
+
+    // The nearest folder wins over a more distant one.
+    CHECK_EQ(roleForPath("Leads/Bass/x.mid"), std::string("bass"));
+}
+
 TEST(QueryingTheLibrary)
 {
     const TemporaryLibrary library;
