@@ -132,6 +132,7 @@ Walked 412 folders, 3184 files
   MIDI files found : 2841
   Indexed          : 2790
   Unreadable       : 51
+  System files     : 2790   (macOS "._" twins e ocultos, ignorados)
   Other files      : .wav(210) .als(41) .zip(9)
 
 Indexed 2790 clips into /Users/você/harmonia-library.json
@@ -155,6 +156,17 @@ Se os dois números baterem, ele achou tudo. Se o `find` achar mais, o motivo
 costuma estar na linha `Other files` (coleção ainda dentro de `.zip`, ou em
 formato que não é MIDI solto) ou em pastas que são *alias*/symlink — nesse caso
 use `--follow-symlinks`. `Folders refused` aponta problema de permissão.
+
+Em pendrive ou HD formatado em **exFAT/FAT32**, o macOS cria um gêmeo `._nome.mid`
+para cada arquivo copiado. Eles casam com a extensão mas são lixo de resource
+fork — o scan os ignora e reporta na linha `System files`, junto com `__MACOSX`,
+`.Trashes` e outras pastas de sistema. Por isso o `find` costuma contar o dobro
+do que o Harmonia indexa; para comparar de verdade, filtre:
+
+```bash
+find "/Volumes/KINGSTON" \( -iname "*.mid" -o -iname "*.midi" \) \
+     ! -name "._*" ! -path "*/__MACOSX/*" | wc -l
+```
 
 Depois:
 
@@ -409,7 +421,7 @@ core/      motor em C++17, sem dependência nenhuma (nem JUCE)
            MIDI, teoria, análise, geradores, progressões, presets,
            biblioteca e o modelo de estilo
 cli/       front end de linha de comando
-tests/     68 testes unitários do motor
+tests/     69 testes unitários do motor
 plugin/    invólucro JUCE: processador, editor, componentes de UI
            tests/ traz um smoke test headless do plugin
 resources/ clipes MIDI de exemplo

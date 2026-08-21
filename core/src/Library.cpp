@@ -30,6 +30,17 @@ bool contains(const std::string& haystack, const std::string& needle)
     return ! needle.empty() && haystack.find(needle) != std::string::npos;
 }
 
+/** macOS scatters these across any drive it touches, and on exFAT every copied
+    file gets a "._" twin that looks like a MIDI file but is a resource fork. */
+bool isSystemName(const std::string& name)
+{
+    return name.rfind("._", 0) == 0
+        || name.rfind('.', 0) == 0
+        || name == "__MACOSX"
+        || name == "System Volume Information"
+        || name == "$RECYCLE.BIN";
+}
+
 /** Recognises what a folder is for from its name: ".../Deep House/Bass/..." */
 std::string roleFromPath(const std::string& lowerPath)
 {
@@ -144,6 +155,12 @@ LibraryIndex scanDirectory(const std::string& root,
         if (! entry.is_regular_file(entryEc) || entryEc)
             return;
 
+        if (isSystemName(entry.path().filename().string()))
+        {
+            ++stats.systemFilesSkipped;
+            return;
+        }
+
         ++stats.filesSeen;
         const auto extension = toLower(entry.path().extension().string());
         if (extension == ".mid" || extension == ".midi")
@@ -173,7 +190,11 @@ LibraryIndex scanDirectory(const std::string& root,
             }
             else
             {
-                collect(*it);
+                std::error_code dirEc;
+                if (it->is_directory(dirEc) && ! dirEc && isSystemName(it->path().filename().string()))
+                    it.disable_recursion_pending(); // do not descend into .Trashes and friends
+                else
+                    collect(*it);
             }
             it.increment(ec);
         }

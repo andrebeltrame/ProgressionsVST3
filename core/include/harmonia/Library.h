@@ -50,6 +50,9 @@ struct ScanStats
     size_t skippedDrums = 0;
     size_t droppedByLimit = 0;   // left out because of ScanOptions::maxFiles
     size_t walkErrors = 0;       // folders the walk could not enter
+    /** AppleDouble twins and hidden system files, skipped before they can be
+        mistaken for clips. A drive formatted exFAT is full of them. */
+    size_t systemFilesSkipped = 0;
     /** Extensions that were not MIDI, most common first, for spotting a
         collection that is all .rmi or still inside .zip files. */
     std::map<std::string, int> otherExtensions;

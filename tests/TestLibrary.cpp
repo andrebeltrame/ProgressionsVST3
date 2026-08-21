@@ -33,6 +33,10 @@ struct TemporaryLibrary
         write("Melodic House/Plucks/pluck_seq.mid", fixtures::melodyClip({ 72, 79, 76, 84, 72, 79, 76, 84 }));
         write("Drums/Percussion/groove.mid", drumClip());
         write("notes.txt", std::string("not a midi file"));
+        // What macOS leaves behind on an exFAT drive.
+        write("Deep House/Bass/._deep_bass_01.mid", std::string("Mac OS X resource fork"));
+        write("__MACOSX/Deep House/._ghost.mid", std::string("resource fork"));
+        write(".Trashes/deleted_loop.mid", fixtures::bassClip({ 36 }));
         write("Deep House/Bass/broken.mid", std::string("MThd but not really"));
     }
 
@@ -154,6 +158,25 @@ TEST(ScanningAFolderTree)
     }
 }
 
+TEST(MacOsClutterIsIgnored)
+{
+    const TemporaryLibrary library;
+    const auto index = scanDirectory(library.root.string(), {}, {}, nullptr);
+
+    for (const auto& entry : index.entries)
+    {
+        const auto name = std::filesystem::path(entry.relativePath).filename().string();
+        CHECK(name.rfind("._", 0) != 0);                                  // no resource forks
+        CHECK(entry.relativePath.find("__MACOSX") == std::string::npos);  // no unzip leftovers
+        CHECK(entry.relativePath.find(".Trashes") == std::string::npos);  // no deleted clips
+    }
+    // The "._" twin sitting next to a real clip is counted as skipped; the
+    // __MACOSX and .Trashes folders are never descended into at all, so their
+    // contents never reach the counter.
+    CHECK(index.stats.systemFilesSkipped >= 1u);
+    CHECK_EQ(index.entries.size(), size_t(5));
+}
+
 TEST(IndexSurvivesSaveAndLoad)
 {
     const TemporaryLibrary library;
@@ -241,6 +264,7 @@ TEST(ScanReportsWhatItSaw)
     CHECK_EQ(stats.midiFilesFound, size_t(6));   // five readable plus the broken one
     CHECK_EQ(stats.indexed, size_t(5));
     CHECK_EQ(stats.unreadable, size_t(1));
+    CHECK(stats.systemFilesSkipped >= 1u);       // the "._" twin never counted as a clip
     CHECK_EQ(stats.indexed, index.entries.size());
     CHECK(stats.directoriesVisited >= 5u);
     CHECK(stats.filesSeen >= stats.midiFilesFound);

@@ -291,6 +291,9 @@ int runScan(const std::vector<std::string>& args)
         std::cout << "  Skipped (drums)  : " << stats.skippedDrums << "\n";
     if (stats.droppedByLimit > 0)
         std::cout << "  Dropped by --max : " << stats.droppedByLimit << "\n";
+    if (stats.systemFilesSkipped > 0)
+        std::cout << "  System files     : " << stats.systemFilesSkipped
+                  << "   (macOS \"._\" twins and hidden files, ignored)\n";
     if (stats.walkErrors > 0)
         std::cout << "  Folders refused  : " << stats.walkErrors
                   << "   (permissions, or a disk that went away)\n";
