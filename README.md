@@ -453,6 +453,29 @@ cmake --build build --config Release
 
 Copie o `.vst3` para `C:\Program Files\Common Files\VST3\Nowhr Dynamics\`.
 
+### Instaladores prontos
+
+Não é preciso compilar nada. Cada push dispara um build no GitHub Actions que
+monta as duas plataformas nas próprias plataformas e publica:
+
+| Arquivo | O que é |
+|---|---|
+| `Progressions-1.0.0-macOS.pkg` | instalador; põe o VST3 no lugar sozinho |
+| `Progressions-1.0.0-Windows.exe` | idem, no Windows |
+| `...-VST3.zip` | só o bundle, para quem prefere copiar à mão |
+
+O build de macOS é **universal** (Intel e Apple Silicon) e o CI falha se não
+for, ou se o selo do bundle estiver quebrado.
+
+Baixe em **Actions → o build mais recente → Artifacts**, ou nas *Releases*
+quando houver uma tag `v*`.
+
+**Enquanto não houver certificados**, os instaladores não são assinados: o
+macOS pede botão direito → Abrir na primeira vez, e o Windows mostra o
+SmartScreen com "Mais informações → Executar assim mesmo". Os ganchos de
+assinatura já estão no lugar — bastam os segredos `MACOS_SIGN_IDENTITY` e
+`MACOS_INSTALLER_IDENTITY` no repositório para que o `.pkg` saia assinado.
+
 > Passe `-DHARMONIA_INSTALL_PLUGIN=ON` e o CMake copia sozinho para
 > `.../VST3/Nowhr Dynamics/` no fim do build, criando a pasta se precisar. O
 > DAW varre a pasta VST3 recursivamente, então a subpasta do fabricante só

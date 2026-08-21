@@ -1,0 +1,156 @@
+name: Build
+
+# Installers for both platforms, built on the platforms themselves: a macOS
+# .pkg has to come from a Mac and a Windows .exe from Windows, so this is the
+# only way to ship both from one machine.
+on:
+  push:
+    branches: [main, claude/vst3-music-idea-generator-vqgacc]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+env:
+  JUCE_TAG: 8.0.6
+
+jobs:
+  engine:
+    name: Engine (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      # The engine is JUCE-free and builds in seconds, so it is the fast
+      # signal: if these fail, nothing about the plugin builds is worth waiting
+      # for.
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  macos:
+    name: macOS installer
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch JUCE
+        run: git clone --depth 1 --branch "$JUCE_TAG" https://github.com/juce-framework/JUCE.git external/JUCE
+
+      - name: Configure
+        # Universal, so one download serves Intel and Apple Silicon. 10.15 is
+        # the floor because the library walk uses std::filesystem.
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DHARMONIA_BUILD_PLUGIN=ON
+          -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Check the plugin is universal and sealed
+        run: |
+          BUNDLE="build/plugin/Progressions_artefacts/Release/VST3/Progressions.vst3"
+          lipo -archs "$BUNDLE/Contents/MacOS/Progressions"
+          lipo -archs "$BUNDLE/Contents/MacOS/Progressions" | grep -q arm64
+          lipo -archs "$BUNDLE/Contents/MacOS/Progressions" | grep -q x86_64
+          # A broken seal is refused by macOS and skipped by the host in
+          # silence, so it has to fail here rather than on someone's machine.
+          codesign -v --strict "$BUNDLE"
+
+      - name: Build the installer
+        env:
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          MACOS_INSTALLER_IDENTITY: ${{ secrets.MACOS_INSTALLER_IDENTITY }}
+        run: |
+          VERSION=$(sed -n 's/.*project(Harmonia VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          echo "Version $VERSION"
+          mkdir -p dist
+          packaging/macos/build-pkg.sh \
+            "build/plugin/Progressions_artefacts/Release/VST3/Progressions.vst3" \
+            "$VERSION" \
+            "dist/Progressions-$VERSION-macOS.pkg"
+
+      - name: Also keep the raw bundle
+        run: |
+          VERSION=$(sed -n 's/.*project(Harmonia VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          ditto -c -k --keepParent \
+            "build/plugin/Progressions_artefacts/Release/VST3/Progressions.vst3" \
+            "dist/Progressions-$VERSION-macOS-VST3.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-installer
+          path: dist/*
+
+  windows:
+    name: Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch JUCE
+        run: git clone --depth 1 --branch $env:JUCE_TAG https://github.com/juce-framework/JUCE.git external/JUCE
+
+      - name: Configure
+        run: cmake -S . -B build -A x64 -DHARMONIA_BUILD_PLUGIN=ON
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(Harmonia VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          Write-Host "Version $version"
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc "/DAppVersion=$version" `
+                  "/DPluginDir=$PWD\build\plugin\Progressions_artefacts\Release\VST3" `
+                  "/DOutputDir=$PWD\dist" `
+                  packaging\windows\progressions.iss
+
+      - name: Also keep the raw bundle
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(Harmonia VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          Compress-Archive -Path "build\plugin\Progressions_artefacts\Release\VST3\Progressions.vst3" `
+                           -DestinationPath "dist\Progressions-$version-Windows-VST3.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/*
+
+  release:
+    name: Release
+    needs: [engine, macos, windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release create "${GITHUB_REF_NAME}" --generate-notes artifacts/*/*
