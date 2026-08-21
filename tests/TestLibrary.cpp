@@ -302,6 +302,25 @@ TEST(ScanReportsWhatItSaw)
     CHECK(stats.otherExtensions.count(".txt") == 1u);
 }
 
+TEST(MidiIsCountedPerTopFolder)
+{
+    const TemporaryLibrary library;
+    const auto index = scanDirectory(library.root.string(), {}, {}, nullptr);
+    const auto& byFolder = index.stats.midiByTopFolder;
+
+    // Deep House holds a bass, a pad and the broken file; Melodic House a lead
+    // and a pluck. This is what tells you which corner of a big drive to learn
+    // from.
+    CHECK_EQ(byFolder.at("Deep House"), 3);
+    CHECK_EQ(byFolder.at("Melodic House"), 2);
+    CHECK_EQ(byFolder.at("Drums"), 1);
+
+    int total = 0;
+    for (const auto& [folder, count] : byFolder)
+        total += count;
+    CHECK_EQ(static_cast<size_t>(total), index.stats.midiFilesFound);
+}
+
 TEST(ScanLimitIsReportedNotHidden)
 {
     const TemporaryLibrary library;

@@ -294,8 +294,20 @@ arquivos. Duas coisas para saber antes de apontar o scan para um desses:
   antes para saber com o que você está lidando.
 - **Foco.** Um cérebro treinado com 200 mil MIDIs aleatórios da internet soa
   como a média da internet, não como você. Para o *style model*, 250 clipes
-  curados de Melodic House valem mais que 200 mil arquivos genéricos. Escaneie
-  as pastas que representam o seu som:
+  curados de Melodic House valem mais que 200 mil arquivos genéricos.
+
+O `--dry-run` mostra quantos MIDIs há em cada pasta de primeiro nível, que é
+como você decide o que vale escanear:
+
+```
+MIDI by top-level folder:
+    88104  Sample Packs
+    61220  Construction Kits
+    12903  Melodic House
+      250  Meus Packs
+```
+
+Aí escaneie só o que representa o seu som:
 
 ```bash
 harmonia-cli scan "/Volumes/HD/Packs/Melodic House" --index ~/melodic.json
@@ -447,7 +459,7 @@ core/      motor em C++17, sem dependência nenhuma (nem JUCE)
            MIDI, teoria, análise, geradores, progressões, presets,
            biblioteca e o modelo de estilo
 cli/       front end de linha de comando
-tests/     72 testes unitários do motor
+tests/     73 testes unitários do motor
 plugin/    invólucro JUCE: processador, editor, componentes de UI
            tests/ traz um smoke test headless do plugin
 resources/ clipes MIDI de exemplo

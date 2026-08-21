@@ -222,7 +222,11 @@ LibraryIndex scanDirectory(const std::string& root,
     std::vector<fs::path> files;
     auto& stats = index.stats;
 
-    const auto collect = [&files, &stats](const fs::directory_entry& entry)
+    // The top-level folder each file belongs to, carried down the walk so a
+    // per-file relative() call is not needed.
+    std::string currentTopFolder;
+
+    const auto collect = [&files, &stats, &currentTopFolder](const fs::directory_entry& entry)
     {
         std::error_code entryEc;
         if (! entry.is_regular_file(entryEc) || entryEc)
@@ -239,6 +243,7 @@ LibraryIndex scanDirectory(const std::string& root,
         if (extension == ".mid" || extension == ".midi")
         {
             ++stats.midiFilesFound;
+            ++stats.midiByTopFolder[currentTopFolder.empty() ? "(root)" : currentTopFolder];
             files.push_back(entry.path());
         }
         else
@@ -253,7 +258,8 @@ LibraryIndex scanDirectory(const std::string& root,
     // EPERM, which skip_permission_denied does not cover) silently ends the
     // scan of the whole drive. Here a folder we cannot read costs that folder
     // and nothing else.
-    std::vector<fs::path> pending { rootPath };
+    // Each folder remembers which top-level folder it came from.
+    std::vector<std::pair<fs::path, std::string>> pending { { rootPath, std::string {} } };
 
     // Only needed when chasing symlinks, where the same folder can be reached
     // by more than one path - including a link that points back up the tree.
@@ -268,8 +274,9 @@ LibraryIndex scanDirectory(const std::string& root,
 
     while (! pending.empty())
     {
-        const fs::path directory = pending.back();
+        const auto [directory, topFolder] = pending.back();
         pending.pop_back();
+        currentTopFolder = topFolder;
 
         std::error_code dirEc;
         fs::directory_iterator it(directory, fs::directory_options::skip_permission_denied, dirEc);
@@ -312,7 +319,7 @@ LibraryIndex scanDirectory(const std::string& root,
                     continue;
                 }
 
-                pending.push_back(entry.path());
+                pending.emplace_back(entry.path(), topFolder.empty() ? name : topFolder);
                 continue;
             }
 

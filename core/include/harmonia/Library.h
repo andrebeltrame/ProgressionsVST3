@@ -56,6 +56,9 @@ struct ScanStats
     /** Extensions that were not MIDI, most common first, for spotting a
         collection that is all .rmi or still inside .zip files. */
     std::map<std::string, int> otherExtensions;
+    /** MIDI files per top-level folder, so a huge drive can be split into the
+        parts worth learning from. */
+    std::map<std::string, int> midiByTopFolder;
 };
 
 struct LibraryIndex

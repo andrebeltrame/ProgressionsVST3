@@ -320,6 +320,29 @@ int runScan(const std::vector<std::string>& args)
         std::cout << "\n  Note: nothing under that path. Check the path, and try\n"
                   << "        --follow-symlinks if your folders are aliases.\n";
 
+    if (! stats.midiByTopFolder.empty() && stats.midiByTopFolder.size() > 1)
+    {
+        std::vector<std::pair<std::string, int>> folders(stats.midiByTopFolder.begin(),
+                                                         stats.midiByTopFolder.end());
+        std::sort(folders.begin(), folders.end(),
+                  [](const auto& a, const auto& b) { return a.second > b.second; });
+
+        std::cout << "\nMIDI by top-level folder:\n";
+        int shown = 0;
+        for (const auto& [folder, count] : folders)
+        {
+            if (shown++ >= 20)
+            {
+                std::cout << "  ... and " << (folders.size() - 20) << " more folders\n";
+                break;
+            }
+            std::cout << "  " << std::right << std::setw(7) << count << "  " << folder << "\n";
+        }
+        std::cout << "\nScan one of these on its own to keep the style model focused:\n"
+                  << "  harmonia-cli scan \"" << root << "/" << folders.front().first
+                  << "\" --index ~/" << "focused.json\n";
+    }
+
     if (options.dryRun)
     {
         std::cout << "\nDry run - nothing was read or written.\n";
