@@ -408,7 +408,7 @@ cmake --build build
 ```
 
 O `.vst3` fica em `build/plugin/Progressions_artefacts/Release/VST3/Progressions.vst3`.
-Copie para `~/.vst3/`.
+Copie para `~/.vst3/Nowhr Dynamics/`.
 
 ### macOS
 
@@ -419,8 +419,8 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DHARMONIA_BUILD_PLUGIN=
 cmake --build build
 ```
 
-Copie o `.vst3` para `~/Library/Audio/Plug-Ins/VST3/`. Para gerar AU também,
-acrescente `AU` em `FORMATS` no `plugin/CMakeLists.txt`.
+Copie o `.vst3` para `~/Library/Audio/Plug-Ins/VST3/Nowhr Dynamics/`. Para gerar
+AU também, acrescente `AU` em `FORMATS` no `plugin/CMakeLists.txt`.
 
 ### Windows
 
@@ -430,11 +430,13 @@ cmake -S . -B build -DHARMONIA_BUILD_PLUGIN=ON
 cmake --build build --config Release
 ```
 
-Copie o `.vst3` para `C:\Program Files\Common Files\VST3\`.
+Copie o `.vst3` para `C:\Program Files\Common Files\VST3\Nowhr Dynamics\`.
 
-> Passe `-DHARMONIA_INSTALL_PLUGIN=ON` e o CMake copia sozinho para a pasta de
-> plugins do sistema no fim do build. Se você não clonar o JUCE à mão, o CMake
-> baixa via `FetchContent` (só demora mais).
+> Passe `-DHARMONIA_INSTALL_PLUGIN=ON` e o CMake copia sozinho para
+> `.../VST3/Nowhr Dynamics/` no fim do build, criando a pasta se precisar. O
+> DAW varre a pasta VST3 recursivamente, então a subpasta do fabricante só
+> organiza — não é preciso configurar caminho nenhum. Se você não clonar o
+> JUCE à mão, o CMake baixa via `FetchContent` (só demora mais).
 
 ---
 

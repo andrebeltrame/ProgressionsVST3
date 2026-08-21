@@ -21,6 +21,19 @@ else()
     FetchContent_MakeAvailable(JUCE)
 endif()
 
+# Installed plugins go into a vendor folder rather than loose in the VST3
+# directory:  .../VST3/Nowhr Dynamics/Progressions.vst3
+# The VST3 layout expects this and hosts scan the folder recursively, so it
+# only keeps the user's plugin folder tidy - nothing has to be told where to
+# look.
+if(APPLE)
+    set(HARMONIA_VST3_DIR "$ENV{HOME}/Library/Audio/Plug-Ins/VST3/Nowhr Dynamics")
+elseif(WIN32)
+    set(HARMONIA_VST3_DIR "$ENV{CommonProgramFiles}/VST3/Nowhr Dynamics")
+else()
+    set(HARMONIA_VST3_DIR "$ENV{HOME}/.vst3/Nowhr Dynamics")
+endif()
+
 juce_add_plugin(Progressions
     PRODUCT_NAME            "Progressions"
     COMPANY_NAME            "Nowhr Dynamics"
@@ -34,6 +47,7 @@ juce_add_plugin(Progressions
     IS_MIDI_EFFECT          FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     COPY_PLUGIN_AFTER_BUILD ${HARMONIA_INSTALL_PLUGIN}
+    VST3_COPY_DIR           "${HARMONIA_VST3_DIR}"
     VST3_CATEGORIES         "Instrument" "Tools"
     MICROPHONE_PERMISSION_ENABLED FALSE)
 
