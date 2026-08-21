@@ -1,0 +1,9 @@
+build/
+build-*/
+cmake-build-*/
+.cache/
+.DS_Store
+*.o
+*.a
+*.so
+*.vst3
