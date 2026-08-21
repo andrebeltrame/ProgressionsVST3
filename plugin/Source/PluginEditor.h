@@ -21,6 +21,11 @@ public:
 
     void paint(juce::Graphics&) override;
     void resized() override;
+    void mouseDown(const juce::MouseEvent&) override;
+
+    /** For the smoke test: a click handler that quietly does nothing is not
+        something a headless build should be able to ship. */
+    bool isAboutVisible() const { return aboutPanel.isVisible(); }
 
     bool isInterestedInFileDrag(const juce::StringArray& files) override;
     void fileDragEnter(const juce::StringArray&, int, int) override;
@@ -55,7 +60,12 @@ private:
 
     juce::Label titleLabel, taglineLabel, sourceLabel, statusLabel;
     juce::TextButton loadButton { "Load MIDI..." }, clearButton { "Clear clip" };
-    juce::TextButton initButton { "Init" }, aboutButton { "?" };
+    juce::TextButton initButton { "Init" };
+    juce::Label versionLabel;
+    /** The header block that opens the about card - kept from resized() so
+        mouseDown can hit-test it without asking the labels, which do not take
+        clicks. */
+    juce::Rectangle<int> aboutHotspot;
     AboutPanel aboutPanel;
 
     PianoRollComponent pianoRoll;

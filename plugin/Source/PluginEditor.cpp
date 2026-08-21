@@ -77,7 +77,17 @@ ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
     titleLabel.setText("PROGRESSIONS", juce::dontSendNotification);
     titleLabel.setFont(juce::FontOptions(22.0f, juce::Font::bold));
     titleLabel.setColour(juce::Label::textColourId, accent);
+    titleLabel.setInterceptsMouseClicks(false, false);
     addAndMakeVisible(titleLabel);
+
+    // Discreet: the version sits beside the name, and the whole block is the
+    // way into the about card. No extra button in the header for it.
+    versionLabel.setText("v" JucePlugin_VersionString, juce::dontSendNotification);
+    versionLabel.setFont(juce::FontOptions(10.0f));
+    versionLabel.setColour(juce::Label::textColourId, textDim);
+    versionLabel.setJustificationType(juce::Justification::bottomLeft);
+    versionLabel.setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(versionLabel);
 
     taglineLabel.setText("drop a clip, get ideas that fit it", juce::dontSendNotification);
     taglineLabel.setFont(juce::FontOptions(12.0f));
@@ -102,14 +112,6 @@ ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
                           "not to this patch");
     initButton.onClick = [this] { processor.initialise(); };
     addAndMakeVisible(initButton);
-
-    aboutButton.setTooltip("About Progressions");
-    aboutButton.onClick = [this]
-    {
-        aboutPanel.setVisible(false);
-        aboutPanel.toFront(true);
-    };
-    addAndMakeVisible(aboutButton);
 
     aboutPanel.setVisible(false);
     addChildComponent(aboutPanel);
@@ -433,6 +435,12 @@ void ProgressionsEditor::refresh()
 
     refreshProgressionField();
 
+    // The preset box is the only control that is not a parameter, so nothing
+    // resets it for us. When no written progression is in force - after Init,
+    // or after Reset chords - it must stop claiming one is.
+    if (! processor.hasWrittenProgression() && presetBox.getSelectedId() != 0)
+        presetBox.setSelectedId(0, juce::dontSendNotification);
+
     if (! keyRootBox.hasKeyboardFocus(true))
     {
         const int wanted = processor.isKeyForced() ? processor.forcedTonic() + 2 : 1;
@@ -529,6 +537,15 @@ void ProgressionsEditor::showLoadDialog()
                              if (file.existsAsFile())
                                  processor.loadMidiFile(file);
                          });
+}
+
+void ProgressionsEditor::mouseDown(const juce::MouseEvent& event)
+{
+    if (aboutHotspot.contains(event.getPosition()))
+    {
+        aboutPanel.setVisible(true);
+        aboutPanel.toFront(false);
+    }
 }
 
 void ProgressionsEditor::showStyleMenu()
@@ -688,15 +705,17 @@ void ProgressionsEditor::resized()
     // ---- Header --------------------------------------------------------------
     auto header = area.removeFromTop(52);
     {
-        auto buttons = header.removeFromRight(300);
+        auto buttons = header.removeFromRight(272);
         buttons.removeFromTop(8);
         clearButton.setBounds(buttons.removeFromRight(84).reduced(2, 6));
         loadButton.setBounds(buttons.removeFromRight(120).reduced(2, 6));
         initButton.setBounds(buttons.removeFromRight(58).reduced(2, 6));
-        aboutButton.setBounds(buttons.removeFromRight(32).reduced(2, 6));
 
-        auto titleArea = header.removeFromLeft(220);
-        titleLabel.setBounds(titleArea.removeFromTop(30));
+        auto titleArea = header.removeFromLeft(250);
+        aboutHotspot = titleArea;
+        auto titleRow = titleArea.removeFromTop(30);
+        titleLabel.setBounds(titleRow.removeFromLeft(178));
+        versionLabel.setBounds(titleRow.withTrimmedBottom(6));
         taglineLabel.setBounds(titleArea);
 
         sourceLabel.setBounds(header.removeFromTop(26).reduced(8, 0));

@@ -6,7 +6,9 @@ musicais a partir da sua própria harmonia. Três caminhos, todos levando ao mes
 1. **Solta um MIDI** — baixo, pad, lead, pluck — e o plugin descobre a
    progressão que está por trás dele.
 2. **Digita a progressão** que você quer: `Am | F | C | G` ou `i VI III VII`.
-3. **Escolhe um preset** de House, Deep House, Melodic House ou Afro House.
+3. **Escolhe um preset** — 36 progressões em 12 gêneros: House, Deep House,
+   Melodic House, Afro House, Progressive House, Melodic Techno, Techno, Trance,
+   Drum & Bass, UK Garage, Downtempo e os clássicos.
 
 Com a harmonia definida, ele escreve pads, melodias, contracantos, baixos,
 arpejos e plucks em cima dela — e você arrasta o resultado direto para o DAW.

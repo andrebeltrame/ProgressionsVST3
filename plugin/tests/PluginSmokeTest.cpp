@@ -398,6 +398,32 @@ int main(int argc, char** argv)
                 check(png.writeImageToStream(image, *stream), "editor renders to a PNG");
                 std::cout << "  wrote " << output.getFullPathName() << "\n";
             }
+
+            // Clicking the name opens the about card. Checked because the
+            // handler is easy to break in a way nothing else notices.
+            auto* progressionsEditor = dynamic_cast<ProgressionsEditor*>(editor.get());
+            check(progressionsEditor != nullptr, "the editor is ours");
+            if (progressionsEditor != nullptr)
+            {
+                check(! progressionsEditor->isAboutVisible(), "about starts hidden");
+
+                const auto click = [progressionsEditor](juce::Point<float> where)
+                {
+                    const juce::MouseEvent event(juce::Desktop::getInstance().getMainMouseSource(),
+                                                 where, juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                                 progressionsEditor, progressionsEditor,
+                                                 juce::Time::getCurrentTime(), where,
+                                                 juce::Time::getCurrentTime(), 1, false);
+                    progressionsEditor->mouseDown(event);
+                };
+
+                click({ 60.0f, 26.0f });
+                check(progressionsEditor->isAboutVisible(), "clicking the name opens it");
+
+                click({ 600.0f, 400.0f });
+                check(progressionsEditor->isAboutVisible(),
+                      "and a click elsewhere in the editor does not close it behind the overlay");
+            }
         }
     }
 
@@ -423,6 +449,7 @@ int main(int argc, char** argv)
         // The library is the installation's, not the patch's: rebuilding it
         // costs minutes, so Init must never take it away.
         check(processor.styleClipCount() == clipsBefore, "but keeps the learned library");
+        check(processor.getProgressionText().isEmpty(), "and leaves no progression to show");
         check(processor.hasStyleModel() == (clipsBefore > 0), "which is still loaded");
     }
 

@@ -50,6 +50,52 @@ const std::vector<ProgressionPreset>& progressionPresets()
         { "afro-dorian", "Dorian groove", "Afro House", "i7 | IV | i7 | VII", ScaleType::Dorian,
           "Modal and repetitive - let the percussion carry it." },
 
+        // ---- Progressive House -------------------------------------------------
+        { "prog-plateau", "Long plateau", "Progressive House", "i | VII | III | VI", ScaleType::NaturalMinor,
+          "Rotates without ever cadencing. Give each chord two bars and let it ride." },
+        { "prog-suspended", "Suspended build", "Progressive House", "isus4 | i | VIIsus4 | VII", ScaleType::NaturalMinor,
+          "Each suspension resolves late; that delay is where the lift comes from." },
+        { "prog-lydian", "Lydian float", "Progressive House", "Imaj7 | II7 | Imaj7 | vi7", ScaleType::Lydian,
+          "The raised fourth keeps it weightless - good under a long, slow arpeggio." },
+
+        // ---- Melodic Techno ------------------------------------------------------
+        { "mtechno-two", "Two-chord dark", "Melodic Techno", "i | VI", ScaleType::NaturalMinor,
+          "Two chords, eight bars each. The tension is in the arrangement, not the harmony." },
+        { "mtechno-phrygian", "Phrygian pull", "Melodic Techno", "i | II", ScaleType::Phrygian,
+          "The flat second is the whole sound. Keep the bass nailed to the tonic." },
+        { "mtechno-held", "Held suspension", "Melodic Techno", "isus2 | isus4", ScaleType::NaturalMinor,
+          "One root, two colours - no third anywhere, so nothing commits." },
+
+        // ---- Techno --------------------------------------------------------------
+        { "techno-roll", "Rolling minor", "Techno", "i | VII | i | VI", ScaleType::NaturalMinor,
+          "Comes home every other bar, so it hypnotises instead of going anywhere." },
+        { "techno-stab", "Minor stab", "Techno", "i | iv", ScaleType::NaturalMinor,
+          "Two stabs, no resolution. Short notes, hard gate." },
+
+        // ---- Trance ---------------------------------------------------------------
+        { "trance-uplift", "Uplifting four", "Trance", "vi | IV | I | V", ScaleType::Major,
+          "Minor start, major landing - the hands-in-the-air shape." },
+        { "trance-emotional", "Emotional roll", "Trance", "VI | VII | III | i", ScaleType::NaturalMinor,
+          "Three steps up and then home. Works with the chords rolling in eighths." },
+
+        // ---- Drum & Bass -----------------------------------------------------------
+        { "dnb-liquid", "Liquid sevenths", "Drum & Bass", "i7 | VImaj7 | IIImaj7 | VII7", ScaleType::NaturalMinor,
+          "The diatonic minor sevenths in a row - warm without going jazzy." },
+        { "dnb-jazzy", "Minor two-five", "Drum & Bass", "iim7b5 | V7 | i7 | VImaj7", ScaleType::HarmonicMinor,
+          "The minor turnaround liquid leans on; the V wants a raised third." },
+
+        // ---- UK Garage --------------------------------------------------------------
+        { "garage-two", "Two-step", "UK Garage", "i9 | IV7", ScaleType::Dorian,
+          "Ninth on the tonic, dominant on the four. Swing the sixteenths." },
+        { "garage-soul", "Soulful garage", "UK Garage", "Imaj7 | vi9 | ii9 | V7", ScaleType::Major,
+          "Chopped vocal harmony; the ninths keep it from sounding like a jazz standard." },
+
+        // ---- Downtempo ----------------------------------------------------------------
+        { "ambient-drift", "Slow drift", "Downtempo", "Imaj7 | IVmaj7", ScaleType::Lydian,
+          "Two major sevenths a fourth apart. Four bars each, no hurry." },
+        { "ambient-open", "Open suspension", "Downtempo", "isus2 | VIIsus2", ScaleType::NaturalMinor,
+          "No thirds, so it reads as texture rather than harmony." },
+
         // ---- Classics ----------------------------------------------------------
         { "pop-four", "Four chords", "Classic", "I | V | vi | IV", ScaleType::Major,
           "The one everybody knows." },
