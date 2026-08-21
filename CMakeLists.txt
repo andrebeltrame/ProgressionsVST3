@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Harmonia VERSION 0.1.0 LANGUAGES CXX)
+project(Harmonia VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,6 +13,7 @@ endif()
 option(HARMONIA_BUILD_CLI    "Build the command line renderer" ON)
 option(HARMONIA_BUILD_TESTS  "Build the core unit tests"       ON)
 option(HARMONIA_BUILD_PLUGIN "Build the VST3 / standalone app" OFF)
+option(HARMONIA_INSTALL_PLUGIN "Copy the built VST3 into the system plugin folder" OFF)
 
 add_subdirectory(core)
 
