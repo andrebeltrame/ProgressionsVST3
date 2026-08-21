@@ -14,6 +14,7 @@ constexpr const char* part        = "part";
 constexpr const char* density     = "density";
 constexpr const char* complexity  = "complexity";
 constexpr const char* humanize    = "humanize";
+constexpr const char* develop     = "develop";
 constexpr const char* swing       = "swing";
 constexpr const char* octave      = "octave";
 constexpr const char* voices      = "voices";

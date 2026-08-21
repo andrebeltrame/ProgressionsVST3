@@ -69,6 +69,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout HarmoniaProcessor::createLay
                                                      NormalisableRange<float> { 0.0f, 1.0f }, 0.15f, percentAttributes));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { ParamID::swing, 1 }, "Swing",
                                                      NormalisableRange<float> { 0.0f, 1.0f }, 0.0f, percentAttributes));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { ParamID::develop, 1 }, "Craft",
+                                                     NormalisableRange<float> { 0.0f, 1.0f }, 0.4f, percentAttributes));
     layout.add(std::make_unique<AudioParameterInt>(ParameterID { ParamID::octave, 1 }, "Octave", -2, 2, 0,
                                                    AudioParameterIntAttributes().withStringFromValueFunction(octaveText)));
     layout.add(std::make_unique<AudioParameterInt>(ParameterID { ParamID::voices, 1 }, "Voices", 2, 6, 4));
@@ -100,7 +102,7 @@ HarmoniaProcessor::HarmoniaProcessor()
       apvts(*this, nullptr, "HARMONIA", createLayout())
 {
     for (const char* id : { ParamID::part, ParamID::density, ParamID::complexity, ParamID::humanize,
-                            ParamID::swing, ParamID::octave, ParamID::voices, ParamID::bars,
+                            ParamID::swing, ParamID::develop, ParamID::octave, ParamID::voices, ParamID::bars,
                             ParamID::follow, ParamID::avoid, ParamID::arpPattern,
                             ParamID::harmonicRhythm, ParamID::useStyle, ParamID::styleAmount })
         apvts.addParameterListener(id, this);
@@ -115,7 +117,7 @@ HarmoniaProcessor::HarmoniaProcessor()
 HarmoniaProcessor::~HarmoniaProcessor()
 {
     for (const char* id : { ParamID::part, ParamID::density, ParamID::complexity, ParamID::humanize,
-                            ParamID::swing, ParamID::octave, ParamID::voices, ParamID::bars,
+                            ParamID::swing, ParamID::develop, ParamID::octave, ParamID::voices, ParamID::bars,
                             ParamID::follow, ParamID::avoid, ParamID::arpPattern,
                             ParamID::harmonicRhythm, ParamID::useStyle, ParamID::styleAmount })
         apvts.removeParameterListener(id, this);
@@ -292,6 +294,7 @@ harmonia::GenerateOptions HarmoniaProcessor::currentOptions() const
     options.density = apvts.getRawParameterValue(ParamID::density)->load();
     options.complexity = apvts.getRawParameterValue(ParamID::complexity)->load();
     options.humanize = apvts.getRawParameterValue(ParamID::humanize)->load();
+    options.motifDevelopment = apvts.getRawParameterValue(ParamID::develop)->load();
     options.swing = apvts.getRawParameterValue(ParamID::swing)->load();
     options.octaveShift = static_cast<int>(apvts.getRawParameterValue(ParamID::octave)->load());
     options.maxVoices = static_cast<int>(apvts.getRawParameterValue(ParamID::voices)->load());

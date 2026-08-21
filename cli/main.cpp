@@ -257,6 +257,8 @@ void printUsage()
         "  --density <0..1>     how busy the part is (default 0.5)\n"
         "  --complexity <0..1>  extensions and chromaticism (default 0.5)\n"
         "  --humanize <0..1>    timing and velocity jitter (default 0.15)\n"
+        "  --develop <0..1>     how hard a melody works its motif: inversion,\n"
+        "                       retrograde, fragmentation, passing notes (default 0.4)\n"
         "  --swing <0..1>       swing on off-beat 16ths\n"
         "  --octave <n>         transpose by n octaves\n"
         "  --voices <n>         maximum voices in a chord (default 4)\n"
@@ -820,6 +822,7 @@ int runGenerate(const std::vector<std::string>& args)
         else if (arg == "--density")                   generateOptions.density = std::stof(value());
         else if (arg == "--complexity")                generateOptions.complexity = std::stof(value());
         else if (arg == "--humanize")                  generateOptions.humanize = std::stof(value());
+        else if (arg == "--develop")                   generateOptions.motifDevelopment = std::stof(value());
         else if (arg == "--swing")                     generateOptions.swing = std::stof(value());
         else if (arg == "--octave")                    generateOptions.octaveShift = std::stoi(value());
         else if (arg == "--voices")                    generateOptions.maxVoices = std::stoi(value());

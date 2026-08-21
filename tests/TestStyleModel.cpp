@@ -187,7 +187,12 @@ TEST(GeneratedMelodyUsesTheLearnedBars)
 
     Engine engine;
     engine.setSource(fixtures::chordClip({ { 60, 64, 67 }, { 57, 60, 64 } }));
-    const auto melody = engine.generate(styledOptions(PartType::Melody, model));
+
+    // Ornaments deliberately sit between the corpus onsets; this test is about
+    // the rhythm bank driving the structural notes, so it turns them off.
+    auto options = styledOptions(PartType::Melody, model);
+    options.motifDevelopment = 0.0f;
+    const auto melody = engine.generate(options);
 
     CHECK(! melody.empty());
     for (int slotIndex : onsetSlots(melody))

@@ -60,7 +60,7 @@ private:
     juce::OwnedArray<juce::TextButton> partButtons;
     std::unique_ptr<juce::ParameterAttachment> partAttachment;
 
-    Knob densityKnob, complexityKnob, humanizeKnob, swingKnob, octaveKnob, voicesKnob, styleKnob;
+    Knob densityKnob, complexityKnob, humanizeKnob, swingKnob, octaveKnob, voicesKnob, craftKnob, styleKnob;
 
     juce::ComboBox lengthBox, arpBox, harmonyBox, keyRootBox, keyModeBox;
     juce::Label lengthLabel { {}, "Length" }, arpLabel { {}, "Arp shape" },

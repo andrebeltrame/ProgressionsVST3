@@ -46,7 +46,7 @@ arpejos e plucks em cima dela — e você arrasta o resultado direto para o DAW.
 |---|---|
 | **Pad** | Vozes sustentadas por acorde, com condução de vozes de verdade (busca pela inversão que menos se movimenta). |
 | **Chords** | O mesmo material em bloco rítmico, seguindo o groove. |
-| **Melody** | Linha construída sobre um motivo curto, repetido e variado em frases de 4 compassos, ancorada em notas do acorde nos tempos fortes. |
+| **Melody** | Linha construída sobre um motivo curto e **trabalhado** ao longo da frase: inversão, retrógrado, fragmentação e notas de passagem, com arco de altura (segura, sobe, pico, assenta). O botão **Craft** dosa o quanto. |
 | **Counter** | Igual à melodia, mas empurrada para movimento contrário ao do clipe e proibida de dobrar as suas notas. |
 | **Bass** | Fundamental com quintas, oitavas e aproximações cromáticas para o próximo acorde. |
 | **Arp** | Notas do acorde em Up / Down / Up-Down / Down-Up / Converge / Random. |
@@ -441,6 +441,10 @@ Detalhes que valem saber:
 - **Host sync** toca junto com o transporte do DAW; desligado, o botão **Play**
   roda em loop no andamento do próprio clipe.
 - **Length** repete a progressão até completar 1, 2, 4, 8 ou 16 compassos.
+- **Craft** decide o quanto a melodia trabalha o motivo. Em 0 ela só repete e
+  transpõe; subindo, o motivo é invertido, tocado ao contrário, fragmentado, e
+  os saltos de terça ganham a nota de passagem no meio. Só vale para Melody e
+  Counter.
 - **Chord changes** força a grade harmônica. Em *Auto* o plugin decide; se ele
   achar um acorde só num lead que você sabe que tem quatro, force *1 per bar*.
 - A **semente** aparece no painel: mesma semente + mesmos controles = exatamente
@@ -485,7 +489,7 @@ core/      motor em C++17, sem dependência nenhuma (nem JUCE)
            MIDI, teoria, análise, geradores, progressões, presets,
            biblioteca e o modelo de estilo
 cli/       front end de linha de comando
-tests/     79 testes unitários do motor
+tests/     80 testes unitários do motor
 plugin/    invólucro JUCE: processador, editor, componentes de UI
            tests/ traz um smoke test headless do plugin
 resources/ clipes MIDI de exemplo

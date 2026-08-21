@@ -845,6 +845,55 @@ NoteSequence writeMelodicLine(Context& ctx, bool counterMelody)
     const int peakLift = 2 + (ctx.rng.chance(0.4f) ? 1 : 0);
     const int phraseArc[4] = { 0, 1, peakLift, ctx.rng.chance(0.5f) ? -1 : 0 };
 
+    // --- Motif development ---------------------------------------------------
+    // Transposing the same shape four times is the thinnest thing a phrase can
+    // do. These are the standard ways a motif is worked: turned upside down,
+    // run backwards, or cut to its first half and repeated.
+    const float development = std::clamp(options.motifDevelopment, 0.0f, 1.0f);
+
+    const auto invert = [](const std::vector<int>& motif)
+    {
+        std::vector<int> out;
+        out.reserve(motif.size());
+        for (int degree : motif)
+            out.push_back(motif.front() - (degree - motif.front()));
+        return out;
+    };
+
+    const auto retrograde = [](const std::vector<int>& motif)
+    {
+        return std::vector<int>(motif.rbegin(), motif.rend());
+    };
+
+    const auto fragment = [](const std::vector<int>& motif)
+    {
+        if (motif.size() < 4)
+            return motif;
+        const std::vector<int> half(motif.begin(), motif.begin() + static_cast<long>(motif.size() / 2));
+        std::vector<int> out = half;
+        out.insert(out.end(), half.begin(), half.end());
+        return out;
+    };
+
+    // One variant per bar of the phrase, drawn once so the phrase is coherent.
+    std::vector<std::vector<int>> barMotifs { motifA, motifA, motifB, motifA };
+    if (development > 0.05f)
+    {
+        // Bar 2 answers bar 1: the more development, the more it is a real
+        // transformation rather than the same shape moved.
+        if (ctx.rng.chance(development * 0.7f))
+            barMotifs[1] = retrograde(motifA);
+
+        // Bar 3 is the contrast, and inverting it against the opening is the
+        // clearest way to make it sound answered rather than random.
+        if (ctx.rng.chance(development * 0.8f))
+            barMotifs[2] = invert(motifA);
+
+        // Bar 4 drives home by fragmenting - the motif chases its own tail.
+        if (ctx.rng.chance(development * 0.6f))
+            barMotifs[3] = fragment(motifA);
+    }
+
     // Where the source line is heading, so a counter melody can move against it.
     const auto sourcePitchAt = [&ctx](int64_t tick) -> int
     {
@@ -895,7 +944,7 @@ NoteSequence writeMelodicLine(Context& ctx, bool counterMelody)
         const int barInPhrase = bar % 4;
         const auto& segment = ctx.chordAt(onset.tick);
 
-        const std::vector<int>& motif = (barInPhrase == 2) ? motifB : motifA;
+        const std::vector<int>& motif = barMotifs[static_cast<size_t>(barInPhrase & 3)];
         const int transposition = phraseArc[barInPhrase & 3];
 
         int degree = motif[i % motif.size()] + transposition;
@@ -992,6 +1041,67 @@ NoteSequence writeMelodicLine(Context& ctx, bool counterMelody)
         note.channel = options.channel;
         out.notes.push_back(note);
         previousPitch = pitch;
+    }
+
+    // --- Passing and neighbour notes ------------------------------------------
+    // A line that only lands on the beat sounds sketched. Filling a third with
+    // the step between it, and turning a repeat into a neighbour, is what makes
+    // a melody sound written rather than outlined.
+    if (development > 0.25f && out.notes.size() >= 2)
+    {
+        std::vector<Note> ornamented;
+        ornamented.reserve(out.notes.size() * 3 / 2);
+
+        for (size_t i = 0; i < out.notes.size(); ++i)
+        {
+            ornamented.push_back(out.notes[i]);
+            if (i + 1 >= out.notes.size())
+                continue;
+
+            const auto& current = out.notes[i];
+            const auto& next = out.notes[i + 1];
+            const int64_t gap = next.startTick - current.startTick;
+            const int interval = next.pitch - current.pitch;
+
+            // Only where there is room for another note without crowding.
+            if (gap < ctx.slotTicks * 2)
+                continue;
+            if (! ctx.rng.chance(development * 0.55f))
+                continue;
+
+            int passing = -1;
+            if (std::abs(interval) == 3 || std::abs(interval) == 4)
+            {
+                // A third: step through the note in between.
+                passing = ctx.key.snapToScale(current.pitch + interval / 2, interval > 0 ? 1 : -1);
+            }
+            else if (interval == 0)
+            {
+                // A repeat: lean off it and come back.
+                passing = ctx.key.snapToScale(current.pitch + (ctx.rng.chance(0.5f) ? 2 : -1), 0);
+            }
+
+            if (passing < 0 || passing == current.pitch || passing == next.pitch)
+                continue;
+
+            Note fill;
+            // Snap to the 16th grid: an ornament off the grid sounds like a
+            // timing error rather than a decision.
+            fill.startTick = ((current.startTick + gap / 2) / ctx.slotTicks) * ctx.slotTicks;
+            if (fill.startTick <= current.startTick || fill.startTick >= next.startTick)
+                continue;
+            fill.lengthTick = std::max<int64_t>(ctx.slotTicks / 2, gap / 2);
+            fill.pitch = clampPitch(passing, ctx.lowPitch, ctx.highPitch);
+            fill.velocity = std::max(1, current.velocity - 14); // lighter than the notes it joins
+            fill.channel = options.channel;
+
+            // The note it steps off can no longer run into it.
+            ornamented.back().lengthTick = std::min(ornamented.back().lengthTick,
+                                                    fill.startTick - current.startTick);
+            ornamented.push_back(fill);
+        }
+
+        out.notes = std::move(ornamented);
     }
 
     if (options.cadenceAtEnd && ! out.notes.empty())

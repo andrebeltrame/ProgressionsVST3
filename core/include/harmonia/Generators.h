@@ -46,6 +46,10 @@ struct GenerateOptions
     float density = 0.5f;     // how busy the part is, 0..1
     float complexity = 0.5f;  // extensions, chromatic approaches, inversions, 0..1
     float humanize = 0.15f;   // timing/velocity jitter, 0..1
+    /** How hard a melodic line works its motif: at 0 the phrase just repeats
+        and transposes, at 1 it inverts, runs backwards, fragments and fills the
+        gaps with passing notes. */
+    float motifDevelopment = 0.4f;
     float swing = 0.0f;       // 0 = straight, 1 = full triplet feel on off-16ths
 
     /** Borrow the onset grid of the source clip instead of using the part default. */

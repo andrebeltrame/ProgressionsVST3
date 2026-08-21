@@ -118,6 +118,7 @@ HarmoniaEditor::HarmoniaEditor(HarmoniaProcessor& p)
     buildKnob(swingKnob, "Swing", ParamID::swing);
     buildKnob(octaveKnob, "Octave", ParamID::octave);
     buildKnob(voicesKnob, "Voices", ParamID::voices);
+    buildKnob(craftKnob, "Craft", ParamID::develop);
     buildKnob(styleKnob, "My style", ParamID::styleAmount);
 
     densityKnob.slider.setTooltip("How busy the generated part is");
@@ -126,6 +127,8 @@ HarmoniaEditor::HarmoniaEditor(HarmoniaProcessor& p)
     swingKnob.slider.setTooltip("Shuffle on the off-beat 16ths");
     octaveKnob.slider.setTooltip("Move the part up or down whole octaves");
     voicesKnob.slider.setTooltip("Maximum notes in a chord voicing");
+    craftKnob.slider.setTooltip("How hard a melody works its motif: inversion, retrograde, "
+                                "fragmentation and passing notes");
     styleKnob.slider.setTooltip("How much of the material learned from your own MIDI collection to use");
 
     // ---- Side panel controls -------------------------------------------------
@@ -363,6 +366,9 @@ void HarmoniaEditor::refresh()
     const bool chordPart = part == 0 || part == 1 || part == 5;
     voicesKnob.slider.setEnabled(chordPart);
     voicesKnob.label.setEnabled(chordPart);
+    const bool melodicPart = part == 2 || part == 3;
+    craftKnob.slider.setEnabled(melodicPart);
+    craftKnob.label.setEnabled(melodicPart);
     arpBox.setEnabled(part == 5);
     arpLabel.setEnabled(part == 5);
 
@@ -588,8 +594,8 @@ void HarmoniaEditor::resized()
         footer.removeFromTop(10);
 
         auto knobRow = footer.removeFromTop(90);
-        Knob* knobs[] = { &densityKnob, &complexityKnob, &humanizeKnob, &swingKnob,
-                          &octaveKnob, &voicesKnob, &styleKnob };
+        Knob* knobs[] = { &densityKnob, &complexityKnob, &craftKnob, &humanizeKnob,
+                          &swingKnob, &octaveKnob, &voicesKnob, &styleKnob };
         const int knobWidth = knobRow.getWidth() / static_cast<int>(std::size(knobs));
         for (auto* knob : knobs)
         {

@@ -219,6 +219,44 @@ TEST(CounterMelodyAvoidsUnisonWithTheSource)
     CHECK(unisons == 0);
 }
 
+TEST(DevelopmentWorksTheMotifInsteadOfRepeatingIt)
+{
+    auto engine = engineFromBassLine();
+
+    auto plain = cleanOptions(PartType::Melody);
+    plain.bars = 4;
+    plain.motifDevelopment = 0.0f;
+
+    auto worked = plain;
+    worked.motifDevelopment = 1.0f;
+
+    const auto flat = engine.generate(plain);
+    const auto developed = engine.generate(worked);
+
+    CHECK(! flat.empty());
+    CHECK(! developed.empty());
+
+    // Working the motif adds passing notes, so the line gets busier.
+    CHECK(developed.notes.size() > flat.notes.size());
+
+    // And it stays in the key while doing it.
+    const auto& key = engine.analysis().key;
+    int outside = 0;
+    for (const auto& note : developed.notes)
+        if (! key.contains(mod12(note.pitch)))
+            ++outside;
+    CHECK(outside == 0);
+
+    // Ornaments land on the 16th grid, never between it.
+    const int64_t slot = kPPQ / 4;
+    for (const auto& note : developed.notes)
+        CHECK(note.startTick % slot == 0);
+
+    // Notes still do not overlap: this is one line, not two.
+    for (size_t i = 1; i < developed.notes.size(); ++i)
+        CHECK(developed.notes[i].startTick >= developed.notes[i - 1].startTick);
+}
+
 TEST(PhrasesHaveAnArcInsteadOfSittingFlat)
 {
     auto engine = engineFromBassLine();
