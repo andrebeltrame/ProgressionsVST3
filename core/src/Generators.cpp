@@ -180,7 +180,7 @@ std::vector<Onset> buildOnsets(Context& ctx, float density, float legato, bool u
 
     // Roughly how many onsets a bar should have at this density, used both to
     // pick a learned bar and to shape a generated one.
-    const float targetOnsets = multiplier * 7.8f;
+    const float targetOnsets = 1.0f + multiplier * 9.0f;
 
     struct Hit
     {
@@ -189,11 +189,16 @@ std::vector<Onset> buildOnsets(Context& ctx, float density, float legato, bool u
         int64_t learnedLength;
     };
 
-    std::vector<Hit> hits;
-    for (int bar = 0; bar < ctx.bars; ++bar)
+    // One bar of rhythm, as offsets inside the bar rather than absolute ticks,
+    // so the same cell can be stamped across a whole phrase.
+    struct BarCell
     {
-        const int64_t barStart = static_cast<int64_t>(bar) * ctx.barTicks;
-        std::vector<Hit> barHits;
+        std::vector<Hit> hits; // tick field holds the offset within the bar
+    };
+
+    const auto makeCell = [&]() -> BarCell
+    {
+        BarCell cell;
 
         // A bar lifted from your own collection, when there is one.
         const RhythmPattern* learned = ctx.useStyle(role)
@@ -208,9 +213,9 @@ std::vector<Onset> buildOnsets(Context& ctx, float density, float legato, bool u
                     continue;
                 const int64_t length = static_cast<int64_t>(std::max<uint8_t>(1, learned->lengthSlots[static_cast<size_t>(slot)]))
                                      * slotTicks;
-                barHits.push_back({ barStart + slot * slotTicks,
-                                    learned->velocity[static_cast<size_t>(slot)],
-                                    length });
+                cell.hits.push_back({ slot * slotTicks,
+                                      learned->velocity[static_cast<size_t>(slot)],
+                                      length });
             }
         }
         else
@@ -222,15 +227,35 @@ std::vector<Onset> buildOnsets(Context& ctx, float density, float legato, bool u
 
                 const float probability = std::clamp(weight * multiplier, 0.0f, 0.96f);
                 if (ctx.rng.chance(probability))
-                    barHits.push_back({ barStart + slot * slotTicks, 0, 0 });
+                    cell.hits.push_back({ slot * slotTicks, 0, 0 });
             }
         }
 
-        if (barHits.empty())
-            barHits.push_back({ barStart, 0, 0 });
-        hits.insert(hits.end(), barHits.begin(), barHits.end());
-    }
+        if (cell.hits.empty())
+            cell.hits.push_back({ 0, 0, 0 });
+        return cell;
+    };
 
+    // Music in this space loops: one rhythmic cell carried across the phrase,
+    // not a new shape every bar. Resampling per bar is what makes a part sound
+    // scattered - nothing repeats, so nothing reads as a groove.
+    constexpr int kPhraseBars = 4;
+    const BarCell mainCell = makeCell();
+
+    // The last bar of a phrase may answer with a different cell - a fill - and
+    // phrase two onwards may swap the fill, but bars 1-3 always hold the cell.
+    const BarCell fillCell = ctx.rng.chance(0.45f) ? makeCell() : mainCell;
+
+    std::vector<Hit> hits;
+    for (int bar = 0; bar < ctx.bars; ++bar)
+    {
+        const int64_t barStart = static_cast<int64_t>(bar) * ctx.barTicks;
+        const bool lastOfPhrase = (bar % kPhraseBars) == kPhraseBars - 1;
+        const BarCell& cell = lastOfPhrase ? fillCell : mainCell;
+
+        for (const auto& hit : cell.hits)
+            hits.push_back({ barStart + hit.tick, hit.velocity, hit.learnedLength });
+    }
     std::sort(hits.begin(), hits.end(), [](const Hit& a, const Hit& b) { return a.tick < b.tick; });
     hits.erase(std::unique(hits.begin(), hits.end(),
                            [](const Hit& a, const Hit& b) { return a.tick == b.tick; }),
@@ -246,9 +271,20 @@ std::vector<Onset> buildOnsets(Context& ctx, float density, float legato, bool u
         Onset onset;
         onset.tick = hits[i].tick;
         onset.velocity = hits[i].velocity;
-        onset.length = hits[i].learnedLength > 0
-                           ? std::min(hits[i].learnedLength, gap)
-                           : std::max<int64_t>(slotTicks / 2, static_cast<int64_t>(static_cast<double>(gap) * legato));
+        if (hits[i].learnedLength > 0)
+        {
+            onset.length = std::min(hits[i].learnedLength, gap);
+            // A staccato eighth lifted from a pack loop leaves dead air when
+            // the phrase is sparse. Sustained roles stretch toward the next
+            // note; plucks (low legato) keep their bite.
+            if (legato >= 0.6f)
+                onset.length = std::max(onset.length,
+                                        static_cast<int64_t>(static_cast<double>(gap) * legato * 0.85));
+        }
+        else
+        {
+            onset.length = std::max<int64_t>(slotTicks / 2, static_cast<int64_t>(static_cast<double>(gap) * legato));
+        }
         const int slot = static_cast<int>((hits[i].tick % ctx.barTicks) / slotTicks);
         onset.accent = slotWeight(slot);
         onsets.push_back(onset);
