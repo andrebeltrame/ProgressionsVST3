@@ -23,9 +23,9 @@ endif()
 
 juce_add_plugin(Harmonia
     PRODUCT_NAME            "Harmonia"
-    COMPANY_NAME            "Harmonia Audio"
-    BUNDLE_ID               "com.harmonia.ideagenerator"
-    PLUGIN_MANUFACTURER_CODE Hrmn
+    COMPANY_NAME            "Nowhr Dynamics"
+    BUNDLE_ID               "com.nowhrdynamics.harmonia"
+    PLUGIN_MANUFACTURER_CODE Nwhr
     PLUGIN_CODE             Hrm1
     FORMATS                 VST3 Standalone
     IS_SYNTH                TRUE
