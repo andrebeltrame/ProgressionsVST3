@@ -249,6 +249,9 @@ void ProgressionsProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
 
     scratchMidi.clear();
 
+    if (pendingPanic.exchange(false))
+        panic(scratchMidi);
+
     if (playing)
     {
         renderEvents(scratchMidi, numSamples, bpm, startPPQ);
@@ -318,8 +321,14 @@ harmonia::GenerateOptions ProgressionsProcessor::currentOptions() const
 
 void ProgressionsProcessor::publish(RenderedPart::Ptr part)
 {
-    const juce::SpinLock::ScopedLockType lock(partLock);
-    activePart = std::move(part);
+    {
+        const juce::SpinLock::ScopedLockType lock(partLock);
+        activePart = std::move(part);
+    }
+
+    // Whatever the old part was holding will never get its note-off, so the
+    // audio thread has to let go of it before the new part starts.
+    pendingPanic.store(true);
 }
 
 void ProgressionsProcessor::applyAnalysisOptions()
@@ -368,6 +377,36 @@ void ProgressionsProcessor::parameterChanged(const juce::String&, float)
 void ProgressionsProcessor::handleAsyncUpdate()
 {
     regenerate();
+}
+
+void ProgressionsProcessor::initialise()
+{
+    cancelLibraryScan();
+
+    for (auto* parameter : getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+            ranged->setValueNotifyingHost(ranged->getDefaultValue());
+
+    engine.resetProgression();
+    engine.clear();
+
+    auto options = engine.analysisOptions();
+    options.forceKey = false;
+    engine.setAnalysisOptions(options);
+    keyForced = false;
+    keyTonic = 9;
+    keyScale = harmonia::ScaleType::NaturalMinor;
+
+    generated = harmonia::NoteSequence {};
+    sourceName.clear();
+    sourceMidiData.reset();
+    lastError.clear();
+    scanSummary.clear();
+    seed = static_cast<juce::uint32>(juce::Random::getSystemRandom().nextInt(1000000) + 1);
+
+    publish(nullptr);
+    regenerate();
+    sendChangeMessage();
 }
 
 void ProgressionsProcessor::rollNewSeed()

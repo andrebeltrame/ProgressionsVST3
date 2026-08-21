@@ -152,6 +152,12 @@ looping is a modulo over `lengthPPQ`, split when a block crosses the loop point.
 Parameter changes go through an `AsyncUpdater`, so regeneration never happens on
 the audio thread.
 
+`publish()` raises `pendingPanic`, and `processBlock` clears it by calling
+`panic()` before it renders anything. Without that, every note the outgoing
+part was holding keeps sounding forever: its note-off lived in a
+`RenderedPart` that no longer exists. Switching part while the transport runs
+is the obvious way to hit it.
+
 ### The plugin carries the model, not a path
 
 A saved absolute path to someone's drive is worthless the moment the drive is

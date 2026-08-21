@@ -6,7 +6,9 @@ using namespace harmonia;
 
 PianoRollComponent::PianoRollComponent()
 {
-    setInterceptsMouseClicks(false, false);
+    // Hovering has to reach us so a note can be named; nothing sits behind
+    // this component that needs the clicks.
+    setInterceptsMouseClicks(true, false);
     placeholder = "Drop a MIDI clip here";
 }
 
@@ -74,6 +76,49 @@ juce::Rectangle<float> PianoRollComponent::rectangleFor(const Note& note, juce::
     const float width = juce::jmax(2.0f, area.getWidth() * static_cast<float>(note.lengthTick) / static_cast<float>(totalTicks));
     const float y = area.getY() + rowHeight * static_cast<float>(highestPitch - note.pitch);
     return { x, y, width, juce::jmax(2.0f, rowHeight - 1.0f) };
+}
+
+const Note* PianoRollComponent::noteAt(juce::Point<float> position, bool& fromSource) const
+{
+    const auto inner = getLocalBounds().toFloat().reduced(8.0f);
+
+    for (const auto* sequence : { &generatedSequence, &sourceSequence })
+    {
+        for (const auto& note : sequence->notes)
+        {
+            if (rectangleFor(note, inner).expanded(0.0f, 1.0f).contains(position))
+            {
+                fromSource = sequence == &sourceSequence;
+                return &note;
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+void PianoRollComponent::mouseMove(const juce::MouseEvent& event)
+{
+    bool fromSource = false;
+    const auto* note = noteAt(event.position, fromSource);
+    const int pitch = note != nullptr ? note->pitch : -1;
+
+    if (pitch == hoveredPitch && fromSource == hoveredIsSource)
+        return;
+
+    hoveredPitch = pitch;
+    hoveredIsSource = fromSource;
+    hoverPosition = event.position;
+    repaint();
+}
+
+void PianoRollComponent::mouseExit(const juce::MouseEvent&)
+{
+    if (hoveredPitch < 0)
+        return;
+
+    hoveredPitch = -1;
+    repaint();
 }
 
 void PianoRollComponent::paint(juce::Graphics& g)
@@ -146,6 +191,36 @@ void PianoRollComponent::paint(juce::Graphics& g)
         const float velocity = juce::jlimit(0.35f, 1.0f, static_cast<float>(note.velocity) / 110.0f);
         g.setColour(accent.withAlpha(velocity));
         g.fillRoundedRectangle(rect, 2.0f);
+
+        // Name the note when the block is big enough to read, so the register
+        // can be checked without counting rows.
+        if (rect.getWidth() >= 26.0f && rect.getHeight() >= 9.0f)
+        {
+            g.setColour(background.withAlpha(0.85f));
+            g.setFont(juce::FontOptions(juce::jmin(11.0f, rect.getHeight() - 1.0f)));
+            g.drawText(juce::String(noteName(note.pitch)), rect.reduced(3.0f, 0.0f),
+                       juce::Justification::centredLeft, false);
+        }
+    }
+
+    if (hoveredPitch >= 0)
+    {
+        const auto colour = hoveredIsSource ? source : accent;
+
+        // The whole row, so the pitch is obvious even where the note is a sliver.
+        g.setColour(colour.withAlpha(0.12f));
+        g.fillRect(inner.getX(), inner.getY() + rowHeight * static_cast<float>(highestPitch - hoveredPitch),
+                   inner.getWidth(), rowHeight);
+
+        const juce::String label(noteName(hoveredPitch));
+        g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+        const float width = juce::jmax(38.0f, juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), label) + 14.0f);
+        auto tag = juce::Rectangle<float>(inner.getX() + 4.0f, inner.getY() + 4.0f, width, 20.0f);
+
+        g.setColour(background.withAlpha(0.9f));
+        g.fillRoundedRectangle(tag, 4.0f);
+        g.setColour(colour);
+        g.drawText(label, tag, juce::Justification::centred, false);
     }
 
     if (playPosition > 0.0)

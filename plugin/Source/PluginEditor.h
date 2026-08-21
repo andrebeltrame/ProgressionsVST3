@@ -3,11 +3,12 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "PluginProcessor.h"
+#include "UI/AboutPanel.h"
 #include "UI/DragExportComponent.h"
-#include "UI/ProgressionsLookAndFeel.h"
 #include "UI/InfoPanel.h"
 #include "UI/PianoRollComponent.h"
 #include "UI/ProgressionStrip.h"
+#include "UI/ProgressionsLookAndFeel.h"
 
 class ProgressionsEditor : public juce::AudioProcessorEditor,
                        public juce::FileDragAndDropTarget,
@@ -54,6 +55,8 @@ private:
 
     juce::Label titleLabel, taglineLabel, sourceLabel, statusLabel;
     juce::TextButton loadButton { "Load MIDI..." }, clearButton { "Clear clip" };
+    juce::TextButton initButton { "Init" }, aboutButton { "?" };
+    AboutPanel aboutPanel;
 
     PianoRollComponent pianoRoll;
     ProgressionStrip progressionStrip;

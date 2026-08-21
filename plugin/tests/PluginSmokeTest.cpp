@@ -11,6 +11,7 @@
 #include "harmonia/MidiFile.h"
 #include "harmonia/StyleModel.h"
 
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <map>
@@ -398,6 +399,31 @@ int main(int argc, char** argv)
                 std::cout << "  wrote " << output.getFullPathName() << "\n";
             }
         }
+    }
+
+    // ---- Init ------------------------------------------------------------
+    // Last, because it throws away everything the checks above set up.
+    {
+        processor.setProgressionText("Dm | Bb | F | C");
+        processor.apvts.getParameter(ParamID::density)->setValueNotifyingHost(1.0f);
+        processor.setForcedKey(true, 2, harmonia::ScaleType::NaturalMinor);
+        const int clipsBefore = processor.styleClipCount();
+
+        processor.initialise();
+
+        check(! processor.getEngine().hasSource(), "init drops the clip");
+        check(! processor.hasWrittenProgression(), "and the typed progression");
+        check(! processor.isKeyForced(), "and unpins the key");
+        auto* density = processor.apvts.getParameter(ParamID::density);
+        const float densityDefault = density->convertFrom0to1(density->getDefaultValue());
+        check(std::abs(processor.apvts.getRawParameterValue(ParamID::density)->load() - densityDefault) < 1.0e-4f,
+              "and puts the knobs back");
+        check(processor.getSourceName().isEmpty(), "and forgets the clip name");
+
+        // The library is the installation's, not the patch's: rebuilding it
+        // costs minutes, so Init must never take it away.
+        check(processor.styleClipCount() == clipsBefore, "but keeps the learned library");
+        check(processor.hasStyleModel() == (clipsBefore > 0), "which is still loaded");
     }
 
     std::cout << (failures == 0 ? "\nAll plugin smoke checks passed\n"

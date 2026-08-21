@@ -97,6 +97,23 @@ ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
     loadButton.onClick = [this] { showLoadDialog(); };
     addAndMakeVisible(loadButton);
 
+    initButton.setTooltip("Back to a fresh instance: no clip, no typed progression, every knob "
+                          "at its default. Your learned library stays - it belongs to the plugin, "
+                          "not to this patch");
+    initButton.onClick = [this] { processor.initialise(); };
+    addAndMakeVisible(initButton);
+
+    aboutButton.setTooltip("About Progressions");
+    aboutButton.onClick = [this]
+    {
+        aboutPanel.setVisible(false);
+        aboutPanel.toFront(true);
+    };
+    addAndMakeVisible(aboutButton);
+
+    aboutPanel.setVisible(false);
+    addChildComponent(aboutPanel);
+
     loadButton.setTooltip("Load a MIDI clip to read the harmony from - a bass, a pad, a lead");
     clearButton.setTooltip("Throw away the loaded clip. A progression you typed stays, "
                            "and so does the library the plugin learned from");
@@ -664,15 +681,19 @@ void ProgressionsEditor::paint(juce::Graphics& g)
 
 void ProgressionsEditor::resized()
 {
+    aboutPanel.setBounds(getLocalBounds());
+
     auto area = getLocalBounds().reduced(12);
 
     // ---- Header --------------------------------------------------------------
     auto header = area.removeFromTop(52);
     {
-        auto buttons = header.removeFromRight(220);
+        auto buttons = header.removeFromRight(300);
         buttons.removeFromTop(8);
-        clearButton.setBounds(buttons.removeFromRight(80).reduced(2, 6));
-        loadButton.setBounds(buttons.removeFromRight(130).reduced(2, 6));
+        clearButton.setBounds(buttons.removeFromRight(84).reduced(2, 6));
+        loadButton.setBounds(buttons.removeFromRight(120).reduced(2, 6));
+        initButton.setBounds(buttons.removeFromRight(58).reduced(2, 6));
+        aboutButton.setBounds(buttons.removeFromRight(32).reduced(2, 6));
 
         auto titleArea = header.removeFromLeft(220);
         titleLabel.setBounds(titleArea.removeFromTop(30));

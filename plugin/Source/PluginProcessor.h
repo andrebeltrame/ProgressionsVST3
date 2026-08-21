@@ -74,6 +74,11 @@ public:
     void clearSource();
 
     void regenerate();
+    /** Back to a fresh instance: every parameter at its default, no clip, no
+        typed progression, a new seed. The learned library is left alone - it
+        belongs to the installation, not to this patch, and rebuilding it costs
+        minutes. */
+    void initialise();
     void rollNewSeed();
     juce::uint32 getSeed() const noexcept { return seed; }
     void setSeed(juce::uint32 newSeed);
@@ -205,6 +210,11 @@ private:
     double currentSampleRate = 44100.0;
     double internalPPQ = 0.0;
     std::atomic<bool> internalPlaying { false };
+    /** Set when a new part replaces one that may be sounding. The audio thread
+        clears it by killing anything held: the notes in the old part have no
+        note-off coming, and a held note over a part change is the one glitch a
+        producer will hear immediately. */
+    std::atomic<bool> pendingPanic { false };
     std::atomic<double> reportedPosition { 0.0 };
     std::atomic<double> clipBpm { 120.0 };
     std::atomic<double> hostBpm { 122.0 };
