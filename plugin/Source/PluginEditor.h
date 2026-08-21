@@ -53,7 +53,7 @@ private:
     juce::TooltipWindow tooltips { this, 500 };
 
     juce::Label titleLabel, taglineLabel, sourceLabel, statusLabel;
-    juce::TextButton loadButton { "Load MIDI..." }, clearButton { "Clear" };
+    juce::TextButton loadButton { "Load MIDI..." }, clearButton { "Clear clip" };
 
     PianoRollComponent pianoRoll;
     ProgressionStrip progressionStrip;

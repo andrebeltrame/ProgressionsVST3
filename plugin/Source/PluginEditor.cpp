@@ -97,6 +97,9 @@ ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
     loadButton.onClick = [this] { showLoadDialog(); };
     addAndMakeVisible(loadButton);
 
+    loadButton.setTooltip("Load a MIDI clip to read the harmony from - a bass, a pad, a lead");
+    clearButton.setTooltip("Throw away the loaded clip. A progression you typed stays, "
+                           "and so does the library the plugin learned from");
     clearButton.onClick = [this] { processor.clearSource(); };
     addAndMakeVisible(clearButton);
 
