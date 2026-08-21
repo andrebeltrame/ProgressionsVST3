@@ -128,11 +128,33 @@ harmonia-cli scan "/Volumes/HD Externo/MIDI" --index ~/harmonia-library.json
 ```
 
 ```
-Indexed 2841 clips into /Users/você/harmonia-library.json
+Walked 412 folders, 3184 files
+  MIDI files found : 2841
+  Indexed          : 2790
+  Unreadable       : 51
+  Other files      : .wav(210) .als(41) .zip(9)
+
+Indexed 2790 clips into /Users/você/harmonia-library.json
   Percussion     : 412
   By role        : arp=233 bass=486 chords=390 drums=412 lead=507 pad=381 pluck=432
   Top folders    : deep house(612) melodic house(548) bass(486) leads(507) ...
 ```
+
+O cabeçalho existe justamente para você conferir se ele pegou tudo. Se o número
+de MIDIs encontrados for menor do que você esperava:
+
+```bash
+# conta sem ler nada, é instantâneo
+harmonia-cli scan "/Volumes/HD Externo/MIDI" --dry-run
+
+# compare com o que o próprio macOS enxerga
+find "/Volumes/HD Externo/MIDI" -iname "*.mid" -o -iname "*.midi" | wc -l
+```
+
+Se os dois números baterem, ele achou tudo. Se o `find` achar mais, o motivo
+costuma estar na linha `Other files` (coleção ainda dentro de `.zip`, ou em
+formato que não é MIDI solto) ou em pastas que são *alias*/symlink — nesse caso
+use `--follow-symlinks`. `Folders refused` aponta problema de permissão.
 
 Depois:
 
@@ -387,7 +409,7 @@ core/      motor em C++17, sem dependência nenhuma (nem JUCE)
            MIDI, teoria, análise, geradores, progressões, presets,
            biblioteca e o modelo de estilo
 cli/       front end de linha de comando
-tests/     65 testes unitários do motor
+tests/     68 testes unitários do motor
 plugin/    invólucro JUCE: processador, editor, componentes de UI
            tests/ traz um smoke test headless do plugin
 resources/ clipes MIDI de exemplo

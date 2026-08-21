@@ -7,6 +7,7 @@
 #include "harmonia/Progression.h"
 #include "harmonia/StyleModel.h"
 
+#include <algorithm>
 #include <cstring>
 #include <map>
 #include <iomanip>
@@ -165,6 +166,8 @@ void printUsage()
         "  --no-recursive       only look in the folder itself\n"
         "  --max <n>            stop after n files\n"
         "  --skip-drums         leave percussion out of the index\n"
+        "  --dry-run            count what is there without reading anything\n"
+        "  --follow-symlinks    walk into folder symlinks and aliases too\n"
         "  --style <file>       where to write the style model\n"
         "                       (default: alongside the index, as *.style.json)\n"
         "  --no-learn           only catalogue, do not learn a style model\n"
@@ -244,9 +247,11 @@ int runScan(const std::vector<std::string>& args)
         else if (arg == "--no-recursive") options.recursive = false;
         else if (arg == "--max")          options.maxFiles = static_cast<size_t>(std::stoul(value()));
         else if (arg == "--skip-drums")   options.skipDrums = true;
-        else if (arg == "--style")        stylePath = value();
-        else if (arg == "--no-learn")     learn = false;
-        else if (arg == "--quiet")        quiet = true;
+        else if (arg == "--style")            stylePath = value();
+        else if (arg == "--no-learn")         learn = false;
+        else if (arg == "--follow-symlinks")  options.followSymlinks = true;
+        else if (arg == "--dry-run")          options.dryRun = true;
+        else if (arg == "--quiet")            quiet = true;
         else
         {
             std::cerr << "Unknown scan option: " << arg << "\n";
@@ -271,11 +276,58 @@ int runScan(const std::vector<std::string>& args)
     StyleModel style;
     const auto index = scanDirectory(root, options, progress, &errors, learn ? &style : nullptr);
 
+    const auto& stats = index.stats;
+
+    // What the walk actually saw, so a scan that missed most of a drive is
+    // obvious instead of looking like a small drive.
+    std::cout << "\nWalked " << stats.directoriesVisited << " folders, "
+              << stats.filesSeen << " files\n"
+              << "  MIDI files found : " << stats.midiFilesFound << "\n";
+    if (! options.dryRun)
+        std::cout << "  Indexed          : " << stats.indexed << "\n";
+    if (stats.unreadable > 0)
+        std::cout << "  Unreadable       : " << stats.unreadable << "\n";
+    if (stats.skippedDrums > 0)
+        std::cout << "  Skipped (drums)  : " << stats.skippedDrums << "\n";
+    if (stats.droppedByLimit > 0)
+        std::cout << "  Dropped by --max : " << stats.droppedByLimit << "\n";
+    if (stats.walkErrors > 0)
+        std::cout << "  Folders refused  : " << stats.walkErrors
+                  << "   (permissions, or a disk that went away)\n";
+
+    if (! stats.otherExtensions.empty())
+    {
+        std::vector<std::pair<std::string, int>> others(stats.otherExtensions.begin(),
+                                                        stats.otherExtensions.end());
+        std::sort(others.begin(), others.end(),
+                  [](const auto& a, const auto& b) { return a.second > b.second; });
+        std::cout << "  Other files      :";
+        for (size_t i = 0; i < others.size() && i < 8; ++i)
+            std::cout << " " << others[i].first << "(" << others[i].second << ")";
+        std::cout << "\n";
+    }
+
+    if (stats.droppedByLimit > 0)
+        std::cout << "\n  Note: --max stopped the scan early. Drop it to take everything.\n";
+    if (stats.midiFilesFound == 0 && stats.filesSeen > 0)
+        std::cout << "\n  Note: files were found but none of them are .mid or .midi.\n"
+                  << "        If your collection is inside .zip or .als project files,\n"
+                  << "        unpack it first - the scanner reads loose MIDI files only.\n";
+    if (stats.directoriesVisited <= 1 && stats.filesSeen == 0)
+        std::cout << "\n  Note: nothing under that path. Check the path, and try\n"
+                  << "        --follow-symlinks if your folders are aliases.\n";
+
+    if (options.dryRun)
+    {
+        std::cout << "\nDry run - nothing was read or written.\n";
+        return stats.midiFilesFound > 0 ? 0 : 1;
+    }
+
     if (index.entries.empty())
     {
-        std::cerr << "No readable MIDI files found under " << root << "\n";
-        for (const auto& error : errors)
-            std::cerr << "  " << error << "\n";
+        std::cerr << "\nNo readable MIDI files were indexed under " << root << "\n";
+        for (size_t i = 0; i < errors.size() && i < 10; ++i)
+            std::cerr << "  " << errors[i] << "\n";
         return 1;
     }
 
@@ -286,7 +338,6 @@ int runScan(const std::vector<std::string>& args)
         return 1;
     }
 
-    // A quick summary of what the collection actually contains.
     std::map<std::string, int> roles;
     int drums = 0;
     for (const auto& entry : index.entries)
@@ -296,10 +347,8 @@ int runScan(const std::vector<std::string>& args)
             ++drums;
     }
 
-    std::cout << "\nIndexed " << index.entries.size() << " clips into " << indexPath << "\n";
-    if (! errors.empty())
-        std::cout << "  " << errors.size() << " files could not be read (use --quiet off to see them)\n";
-    std::cout << "  Percussion     : " << drums << "\n  By role        :";
+    std::cout << "\nIndexed " << index.entries.size() << " clips into " << indexPath << "\n"
+              << "  Percussion     : " << drums << "\n  By role        :";
     for (const auto& [role, count] : roles)
         std::cout << " " << role << "=" << count;
     std::cout << "\n  Top folders    :";
@@ -327,6 +376,15 @@ int runScan(const std::vector<std::string>& args)
         std::cout << "\nWrite in your own style with:\n"
                   << "  harmonia-cli --preset melodic-lift --key \"F minor\" --style " << stylePath
                   << " --part bass,melody\n";
+    }
+
+    if (! errors.empty())
+    {
+        std::cout << "\n" << errors.size() << " files could not be read:\n";
+        for (size_t i = 0; i < errors.size() && i < 20; ++i)
+            std::cout << "  " << errors[i] << "\n";
+        if (errors.size() > 20)
+            std::cout << "  ... and " << (errors.size() - 20) << " more\n";
     }
 
     std::cout << "\nSearch the catalogue with:  harmonia-cli library --index " << indexPath << " --role bass\n";

@@ -228,6 +228,55 @@ TEST(QueryingTheLibrary)
     CHECK(! tags.empty());
 }
 
+TEST(ScanReportsWhatItSaw)
+{
+    const TemporaryLibrary library;
+    // A drive has more than MIDI on it.
+    library.write("Projects/song.als", std::string("not midi"));
+    library.write("Projects/bounce.wav", std::string("not midi either"));
+
+    const auto index = scanDirectory(library.root.string(), {}, {}, nullptr);
+    const auto& stats = index.stats;
+
+    CHECK_EQ(stats.midiFilesFound, size_t(6));   // five readable plus the broken one
+    CHECK_EQ(stats.indexed, size_t(5));
+    CHECK_EQ(stats.unreadable, size_t(1));
+    CHECK_EQ(stats.indexed, index.entries.size());
+    CHECK(stats.directoriesVisited >= 5u);
+    CHECK(stats.filesSeen >= stats.midiFilesFound);
+    CHECK_EQ(stats.droppedByLimit, size_t(0));
+
+    // The non-MIDI files are reported rather than silently ignored, which is
+    // how you spot a collection that is all .rmi or still zipped up.
+    CHECK(stats.otherExtensions.count(".als") == 1u);
+    CHECK(stats.otherExtensions.count(".wav") == 1u);
+    CHECK(stats.otherExtensions.count(".txt") == 1u);
+}
+
+TEST(ScanLimitIsReportedNotHidden)
+{
+    const TemporaryLibrary library;
+    ScanOptions options;
+    options.maxFiles = 2;
+
+    const auto index = scanDirectory(library.root.string(), options, {}, nullptr);
+    CHECK_EQ(index.stats.midiFilesFound, size_t(6));
+    CHECK_EQ(index.stats.droppedByLimit, size_t(4));
+    CHECK(index.entries.size() <= size_t(2));
+}
+
+TEST(DryRunCountsWithoutReading)
+{
+    const TemporaryLibrary library;
+    ScanOptions options;
+    options.dryRun = true;
+
+    const auto index = scanDirectory(library.root.string(), options, {}, nullptr);
+    CHECK(index.entries.empty());
+    CHECK_EQ(index.stats.midiFilesFound, size_t(6));
+    CHECK_EQ(index.stats.unreadable, size_t(0));
+}
+
 TEST(ScanOptionsAreRespected)
 {
     const TemporaryLibrary library;

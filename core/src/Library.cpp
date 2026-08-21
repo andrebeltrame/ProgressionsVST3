@@ -127,47 +127,84 @@ LibraryIndex scanDirectory(const std::string& root,
         return index;
     }
 
-    // Collect first so the progress callback can report a total.
+    // Collect first so the progress callback can report a total, and count
+    // everything we walk past - a scan that silently skipped nine tenths of a
+    // drive should not look like a scan of a small drive.
     std::vector<fs::path> files;
-    const auto collect = [&files](const fs::directory_entry& entry)
+    auto& stats = index.stats;
+
+    const auto collect = [&files, &stats](const fs::directory_entry& entry)
     {
-        if (! entry.is_regular_file())
+        std::error_code entryEc;
+        if (entry.is_directory(entryEc) && ! entryEc)
+        {
+            ++stats.directoriesVisited;
             return;
+        }
+        if (! entry.is_regular_file(entryEc) || entryEc)
+            return;
+
+        ++stats.filesSeen;
         const auto extension = toLower(entry.path().extension().string());
         if (extension == ".mid" || extension == ".midi")
+        {
+            ++stats.midiFilesFound;
             files.push_back(entry.path());
+        }
+        else
+        {
+            ++stats.otherExtensions[extension.empty() ? "(no extension)" : extension];
+        }
     };
+
+    auto walkOptions = fs::directory_options::skip_permission_denied;
+    if (options.followSymlinks)
+        walkOptions |= fs::directory_options::follow_directory_symlink;
 
     if (options.recursive)
     {
-        for (auto it = fs::recursive_directory_iterator(rootPath, fs::directory_options::skip_permission_denied, ec);
-             it != fs::recursive_directory_iterator(); it.increment(ec))
+        for (auto it = fs::recursive_directory_iterator(rootPath, walkOptions, ec);
+             it != fs::recursive_directory_iterator();)
         {
             if (ec)
             {
+                ++stats.walkErrors;
                 ec.clear();
-                continue;
             }
-            collect(*it);
+            else
+            {
+                collect(*it);
+            }
+            it.increment(ec);
         }
     }
     else
     {
-        for (auto it = fs::directory_iterator(rootPath, fs::directory_options::skip_permission_denied, ec);
-             it != fs::directory_iterator(); it.increment(ec))
+        for (auto it = fs::directory_iterator(rootPath, walkOptions, ec);
+             it != fs::directory_iterator();)
         {
             if (ec)
             {
+                ++stats.walkErrors;
                 ec.clear();
-                continue;
             }
-            collect(*it);
+            else
+            {
+                collect(*it);
+            }
+            it.increment(ec);
         }
     }
 
     std::sort(files.begin(), files.end());
     if (options.maxFiles > 0 && files.size() > options.maxFiles)
+    {
+        stats.droppedByLimit = files.size() - options.maxFiles;
         files.resize(options.maxFiles);
+    }
+
+    if (options.dryRun)
+        return index;
 
     size_t done = 0;
     for (const auto& file : files)
@@ -181,6 +218,7 @@ LibraryIndex scanDirectory(const std::string& root,
         std::string error;
         if (! midi::readFromFile(file.string(), sequence, error))
         {
+            ++stats.unreadable;
             if (errors != nullptr)
                 errors->push_back(relative + ": " + error);
             continue;
@@ -197,7 +235,10 @@ LibraryIndex scanDirectory(const std::string& root,
             entry.drums = true;
 
         if (options.skipDrums && entry.drums)
+        {
+            ++stats.skippedDrums;
             continue;
+        }
 
         const auto analysis = analyze(sequence);
         entry.role = analysis.role;
@@ -221,6 +262,7 @@ LibraryIndex scanDirectory(const std::string& root,
         }
 
         index.entries.push_back(std::move(entry));
+        ++stats.indexed;
     }
 
     if (styleModel != nullptr)

@@ -5,6 +5,7 @@
 #include "harmonia/Theory.h"
 
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -37,10 +38,28 @@ struct LibraryEntry
     std::string summary() const;
 };
 
+/** What the walk actually saw. Without this a scan that quietly skipped most of
+    a drive looks exactly like a scan of a small drive. */
+struct ScanStats
+{
+    size_t directoriesVisited = 0;
+    size_t filesSeen = 0;        // every regular file, whatever the extension
+    size_t midiFilesFound = 0;   // .mid / .midi
+    size_t indexed = 0;
+    size_t unreadable = 0;
+    size_t skippedDrums = 0;
+    size_t droppedByLimit = 0;   // left out because of ScanOptions::maxFiles
+    size_t walkErrors = 0;       // folders the walk could not enter
+    /** Extensions that were not MIDI, most common first, for spotting a
+        collection that is all .rmi or still inside .zip files. */
+    std::map<std::string, int> otherExtensions;
+};
+
 struct LibraryIndex
 {
     std::string root;
     std::vector<LibraryEntry> entries;
+    ScanStats stats;
 
     const LibraryEntry* find(const std::string& relativePath) const;
 };
@@ -48,8 +67,13 @@ struct LibraryIndex
 struct ScanOptions
 {
     bool recursive = true;
-    size_t maxFiles = 0;        // 0 = no limit
-    bool skipDrums = false;     // leave percussion out of the index entirely
+    size_t maxFiles = 0;         // 0 = no limit
+    bool skipDrums = false;      // leave percussion out of the index entirely
+    /** Follow folder symlinks and aliases. Off by default because a loop in the
+        tree would make the walk run forever. */
+    bool followSymlinks = false;
+    /** Count what is there without opening anything. */
+    bool dryRun = false;
 };
 
 /** Walks a folder tree, analyses every .mid it finds and returns the index.
