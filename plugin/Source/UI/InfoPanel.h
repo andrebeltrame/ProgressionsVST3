@@ -36,7 +36,7 @@ public:
 
         for (const auto& [key, value] : rows)
         {
-            auto row = inner.removeFromTop(20.0f);
+            auto row = inner.removeFromTop(19.0f);
             g.setColour(textDim);
             g.setFont(juce::FontOptions(12.0f));
             g.drawText(key, row.removeFromLeft(row.getWidth() * 0.42f), juce::Justification::centredLeft, true);

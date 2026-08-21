@@ -25,6 +25,7 @@ constexpr const char* preview     = "preview";
 constexpr const char* level       = "level";
 constexpr const char* hostSync    = "hostSync";
 constexpr const char* midiChannel = "midiChannel";
+constexpr const char* harmonicRhythm = "harmonicRhythm";
 } // namespace ParamID
 
 /** The plugin: holds the analysis engine, renders the generated part and plays
@@ -100,6 +101,7 @@ private:
     void handleAsyncUpdate() override;
 
     harmonia::GenerateOptions currentOptions() const;
+    void applyAnalysisOptions();
     void publish(RenderedPart::Ptr part);
     void renderEvents(juce::MidiBuffer& midi, int numSamples, double bpm, double startPPQ);
     void panic(juce::MidiBuffer& midi);

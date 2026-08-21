@@ -90,7 +90,7 @@ HarmoniaEditor::HarmoniaEditor(HarmoniaProcessor& p)
     voicesKnob.slider.setTooltip("Maximum notes in a chord voicing");
 
     // ---- Side panel controls -------------------------------------------------
-    for (auto* label : { &lengthLabel, &arpLabel, &levelLabel })
+    for (auto* label : { &lengthLabel, &arpLabel, &harmonyLabel, &levelLabel })
     {
         label->setFont(juce::FontOptions(11.0f, juce::Font::bold));
         label->setColour(juce::Label::textColourId, textDim);
@@ -101,6 +101,12 @@ HarmoniaEditor::HarmoniaEditor(HarmoniaProcessor& p)
     addAndMakeVisible(lengthBox);
     lengthAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         processor.apvts, ParamID::bars, lengthBox);
+
+    harmonyBox.addItemList({ "Auto", "1 per bar", "2 per bar", "1 per beat" }, 1);
+    harmonyBox.setTooltip("How often the detector is allowed to change chord. Auto reads it from the clip.");
+    addAndMakeVisible(harmonyBox);
+    harmonyAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        processor.apvts, ParamID::harmonicRhythm, harmonyBox);
 
     arpBox.addItemList({ "Up", "Down", "Up-Down", "Down-Up", "Converge", "Random" }, 1);
     addAndMakeVisible(arpBox);
@@ -170,8 +176,8 @@ HarmoniaEditor::HarmoniaEditor(HarmoniaProcessor& p)
     refresh();
 
     setResizable(true, true);
-    setResizeLimits(900, 640, 1800, 1200);
-    setSize(1020, 700);
+    setResizeLimits(940, 700, 1800, 1200);
+    setSize(1020, 720);
     startTimerHz(30);
 }
 
@@ -414,7 +420,7 @@ void HarmoniaEditor::resized()
     area.removeFromLeft(12);
     {
         // Everything below the read-out is fixed height; the read-out takes the rest.
-        constexpr int controlsHeight = 14 + 26 + 12 + 24 + 4 + 24 + 12 + 14 + 24;
+        constexpr int controlsHeight = 14 + 26 + 8 + 14 + 26 + 12 + 24 + 4 + 24 + 12 + 14 + 24;
         infoPanel.setBounds(side.removeFromTop(juce::jmax(150, side.getHeight() - controlsHeight - 10)));
         side.removeFromTop(10);
 
@@ -422,9 +428,13 @@ void HarmoniaEditor::resized()
         auto comboRow = side.removeFromTop(26);
         const int half = side.getWidth() / 2;
         lengthLabel.setBounds(labelRow.removeFromLeft(half).reduced(2, 0));
-        arpLabel.setBounds(labelRow.reduced(2, 0));
+        harmonyLabel.setBounds(labelRow.reduced(2, 0));
         lengthBox.setBounds(comboRow.removeFromLeft(half).reduced(2, 0));
-        arpBox.setBounds(comboRow.reduced(2, 0));
+        harmonyBox.setBounds(comboRow.reduced(2, 0));
+
+        side.removeFromTop(8);
+        arpLabel.setBounds(side.removeFromTop(14).removeFromLeft(half).reduced(2, 0));
+        arpBox.setBounds(side.removeFromTop(26).removeFromLeft(half).reduced(2, 0));
 
         side.removeFromTop(12);
         auto toggleRow = side.removeFromTop(24);

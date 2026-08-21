@@ -11,6 +11,19 @@ namespace
 const juce::StringArray kPartNames { "Pad", "Chords", "Melody", "Counter Melody", "Bass", "Arp" };
 const juce::StringArray kBarChoices { "As source", "1", "2", "4", "8", "16" };
 const juce::StringArray kArpChoices { "Up", "Down", "Up-Down", "Down-Up", "Converge", "Random" };
+const juce::StringArray kHarmonyChoices { "Auto", "1 per bar", "2 per bar", "1 per beat" };
+
+/** How many chords the detector is allowed to find per bar. 0 lets it decide. */
+int chordsPerBarForChoice(int index)
+{
+    switch (index)
+    {
+        case 1: return 1;
+        case 2: return 2;
+        case 3: return 4;
+        default: return 0;
+    }
+}
 
 juce::String percentText(float value, int)
 {
@@ -72,6 +85,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout HarmoniaProcessor::createLay
                                                          })));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { ParamID::hostSync, 1 }, "Sync To Host", true));
     layout.add(std::make_unique<AudioParameterInt>(ParameterID { ParamID::midiChannel, 1 }, "MIDI Channel", 1, 16, 1));
+    layout.add(std::make_unique<AudioParameterChoice>(ParameterID { ParamID::harmonicRhythm, 1 }, "Harmonic Rhythm",
+                                                      kHarmonyChoices, 0));
 
     return layout;
 }
@@ -82,7 +97,8 @@ HarmoniaProcessor::HarmoniaProcessor()
 {
     for (const char* id : { ParamID::part, ParamID::density, ParamID::complexity, ParamID::humanize,
                             ParamID::swing, ParamID::octave, ParamID::voices, ParamID::bars,
-                            ParamID::follow, ParamID::avoid, ParamID::arpPattern })
+                            ParamID::follow, ParamID::avoid, ParamID::arpPattern,
+                            ParamID::harmonicRhythm })
         apvts.addParameterListener(id, this);
 
     previewSynth.addSound(new PreviewSound());
@@ -96,7 +112,8 @@ HarmoniaProcessor::~HarmoniaProcessor()
 {
     for (const char* id : { ParamID::part, ParamID::density, ParamID::complexity, ParamID::humanize,
                             ParamID::swing, ParamID::octave, ParamID::voices, ParamID::bars,
-                            ParamID::follow, ParamID::avoid, ParamID::arpPattern })
+                            ParamID::follow, ParamID::avoid, ParamID::arpPattern,
+                            ParamID::harmonicRhythm })
         apvts.removeParameterListener(id, this);
 
     if (dragFile.existsAsFile())
@@ -284,8 +301,25 @@ void HarmoniaProcessor::publish(RenderedPart::Ptr part)
     activePart = std::move(part);
 }
 
+void HarmoniaProcessor::applyAnalysisOptions()
+{
+    const int wanted = chordsPerBarForChoice(
+        static_cast<int>(apvts.getRawParameterValue(ParamID::harmonicRhythm)->load()));
+
+    if (wanted == engine.analysisOptions().chordsPerBar)
+        return;
+
+    // Re-running the analysis drops any hand-edited or reharmonised chords,
+    // which is what you would expect from changing the harmonic grid.
+    auto options = engine.analysisOptions();
+    options.chordsPerBar = wanted;
+    engine.setAnalysisOptions(options);
+}
+
 void HarmoniaProcessor::regenerate()
 {
+    applyAnalysisOptions();
+
     if (! engine.hasSource() || ! engine.analysis().valid)
     {
         generated = NoteSequence {};

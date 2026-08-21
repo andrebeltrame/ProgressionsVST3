@@ -161,7 +161,7 @@ int main(int argc, char** argv)
 
         if (editor != nullptr)
         {
-            editor->setSize(1020, 700);
+            editor->setSize(1020, 720);
             juce::Image image(juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);
             {
                 juce::Graphics g(image);

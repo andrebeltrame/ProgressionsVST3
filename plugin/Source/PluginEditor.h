@@ -58,8 +58,9 @@ private:
 
     Knob densityKnob, complexityKnob, humanizeKnob, swingKnob, octaveKnob, voicesKnob;
 
-    juce::ComboBox lengthBox, arpBox;
-    juce::Label lengthLabel { {}, "Length" }, arpLabel { {}, "Arp shape" };
+    juce::ComboBox lengthBox, arpBox, harmonyBox;
+    juce::Label lengthLabel { {}, "Length" }, arpLabel { {}, "Arp shape" },
+                harmonyLabel { {}, "Chord changes" };
     juce::ToggleButton followToggle { "Follow groove" };
     juce::ToggleButton avoidToggle { "Stay clear" };
     juce::ToggleButton syncToggle { "Host sync" };
@@ -67,7 +68,8 @@ private:
     juce::Slider levelSlider;
     juce::Label levelLabel { {}, "Preview level" };
 
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> lengthAttachment, arpAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> lengthAttachment, arpAttachment,
+                                                                            harmonyAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> followAttachment, avoidAttachment,
                                                                           syncAttachment, previewAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> levelAttachment;
