@@ -110,6 +110,19 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
 
+      - name: Check the plugin carries its own runtime
+        shell: pwsh
+        run: |
+          $dll = "build\plugin\Progressions_artefacts\Release\VST3\Progressions.vst3\Contents\x86_64-win\Progressions.vst3"
+          if (-not (Test-Path $dll)) { throw "No plugin at $dll" }
+          # A dependency on the redistributable is invisible until someone
+          # without it tries to load the plugin, so read the import table here.
+          $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($dll))
+          foreach ($lib in 'VCRUNTIME140', 'MSVCP140') {
+            if ($text -match $lib) { throw "$dll still imports $lib - the runtime is not static" }
+          }
+          Write-Host "No Visual C++ redistributable needed."
+
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 

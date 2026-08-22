@@ -2,6 +2,15 @@ cmake_minimum_required(VERSION 3.22)
 
 project(Harmonia VERSION 1.0.0 LANGUAGES C CXX)
 
+if(MSVC)
+    # Link the C++ runtime statically. Otherwise the plugin needs the Visual
+    # C++ redistributable installed, and on a machine without it the DLL fails
+    # to load and the host skips it without a word - the same invisible failure
+    # a broken code signature causes on macOS. Nobody downloading a plugin
+    # should have to install a runtime first.
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
