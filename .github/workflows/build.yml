@@ -138,12 +138,19 @@ jobs:
                   "/DOutputDir=$PWD\dist" `
                   packaging\windows\progressions.iss
 
-      - name: Also keep the raw bundle
+      - name: Also keep the raw bundle and a single-file build
         shell: pwsh
         run: |
           $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(Harmonia VERSION ([0-9.]+)').Matches[0].Groups[1].Value
           Compress-Archive -Path "build\plugin\Progressions_artefacts\Release\VST3\Progressions.vst3" `
                            -DestinationPath "dist\Progressions-$version-Windows-VST3.zip"
+
+          # The DLL inside the bundle is a complete VST3 module on its own, and
+          # dropping one file into the VST3 folder is what a lot of people
+          # expect on Windows - half the plugins on a typical machine ship that
+          # way. JUCE has no switch for it, so lift the file out here.
+          Copy-Item "build\plugin\Progressions_artefacts\Release\VST3\Progressions.vst3\Contents\x86_64-win\Progressions.vst3" `
+                    "dist\Progressions.vst3"
 
       - uses: actions/upload-artifact@v4
         with:

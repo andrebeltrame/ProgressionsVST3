@@ -466,6 +466,7 @@ monta as duas plataformas nas próprias plataformas e publica:
 | `Progressions-1.0.0-macOS.pkg` | instalador; põe o VST3 no lugar sozinho |
 | `Progressions-1.0.0-Windows.exe` | idem, no Windows |
 | `...-VST3.zip` | só o bundle, para quem prefere copiar à mão |
+| `Progressions.vst3` (Windows) | arquivo único, para largar direto na pasta VST3 |
 
 O build de macOS é **universal** (Intel e Apple Silicon) e o CI falha se não
 for, ou se o selo do bundle estiver quebrado.
