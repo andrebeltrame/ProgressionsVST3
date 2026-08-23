@@ -1,8 +1,8 @@
 name: Build
 
-# Installers for both platforms, built on the platforms themselves: a macOS
-# .pkg has to come from a Mac and a Windows .exe from Windows, so this is the
-# only way to ship both from one machine.
+# One plug-in for both platforms, built on the platforms themselves: a macOS
+# binary has to come from a Mac and a Windows one from Windows. A third job
+# merges the two into a single VST3 bundle, which is the only thing shipped.
 on:
   push:
     branches: [main, claude/vst3-music-idea-generator-vqgacc]
@@ -33,7 +33,7 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
   macos:
-    name: macOS installer
+    name: macOS build
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -67,33 +67,21 @@ jobs:
           # silence, so it has to fail here rather than on someone's machine.
           codesign -v --strict "$BUNDLE"
 
-      - name: Build the installer
-        env:
-          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
-          MACOS_INSTALLER_IDENTITY: ${{ secrets.MACOS_INSTALLER_IDENTITY }}
+      # Handed to the merge job, not shipped on its own.
+      - name: Keep the bundle
         run: |
-          VERSION=$(sed -n 's/.*project(Harmonia VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
-          echo "Version $VERSION"
           mkdir -p dist
-          packaging/macos/build-pkg.sh \
-            "build/plugin/Progressions_artefacts/Release/VST3/Progressions.vst3" \
-            "$VERSION" \
-            "dist/Progressions-$VERSION-macOS.pkg"
-
-      - name: Also keep the raw bundle
-        run: |
-          VERSION=$(sed -n 's/.*project(Harmonia VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
           ditto -c -k --keepParent \
             "build/plugin/Progressions_artefacts/Release/VST3/Progressions.vst3" \
-            "dist/Progressions-$VERSION-macOS-VST3.zip"
+            "dist/macos-bundle.zip"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: macos-installer
+          name: macos-build
           path: dist/*
 
   windows:
-    name: Windows installer
+    name: Windows build
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -123,38 +111,18 @@ jobs:
           }
           Write-Host "No Visual C++ redistributable needed."
 
-      - name: Install Inno Setup
-        run: choco install innosetup --no-progress -y
-
-      - name: Build the installer
+      # Only the DLL is needed downstream: the merge job drops it into the
+      # macOS bundle, where it becomes the Windows half of one plug-in.
+      - name: Keep the Windows binary
         shell: pwsh
         run: |
-          $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(Harmonia VERSION ([0-9.]+)').Matches[0].Groups[1].Value
-          Write-Host "Version $version"
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          & $iscc "/DAppVersion=$version" `
-                  "/DPluginDir=$PWD\build\plugin\Progressions_artefacts\Release\VST3" `
-                  "/DOutputDir=$PWD\dist" `
-                  packaging\windows\progressions.iss
-
-      - name: Also keep the raw bundle and a single-file build
-        shell: pwsh
-        run: |
-          $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(Harmonia VERSION ([0-9.]+)').Matches[0].Groups[1].Value
-          Compress-Archive -Path "build\plugin\Progressions_artefacts\Release\VST3\Progressions.vst3" `
-                           -DestinationPath "dist\Progressions-$version-Windows-VST3.zip"
-
-          # The DLL inside the bundle is a complete VST3 module on its own, and
-          # dropping one file into the VST3 folder is what a lot of people
-          # expect on Windows - half the plugins on a typical machine ship that
-          # way. JUCE has no switch for it, so lift the file out here.
           Copy-Item "build\plugin\Progressions_artefacts\Release\VST3\Progressions.vst3\Contents\x86_64-win\Progressions.vst3" `
                     "dist\Progressions.vst3"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-installer
+          name: windows-build
           path: dist/*
 
   universal:
@@ -169,12 +137,12 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: macos-installer
+          name: macos-build
           path: mac
 
       - uses: actions/download-artifact@v4
         with:
-          name: windows-installer
+          name: windows-build
           path: win
 
       - name: Merge, sign, verify
@@ -187,9 +155,10 @@ jobs:
           # A VST3 bundle is designed to hold every platform's binary side by
           # side, each under its own Contents subfolder. One folder, one
           # download, and each system picks up its own.
-          mkdir -p merge dist
-          ditto -x -k "mac/Progressions-$VERSION-macOS-VST3.zip" merge
-          BUNDLE="merge/Progressions.vst3"
+          PAYLOAD="Progressions-$VERSION"
+          mkdir -p "$PAYLOAD" dist
+          ditto -x -k "mac/macos-bundle.zip" "$PAYLOAD"
+          BUNDLE="$PAYLOAD/Progressions.vst3"
 
           mkdir -p "$BUNDLE/Contents/x86_64-win"
           cp "win/Progressions.vst3" "$BUNDLE/Contents/x86_64-win/Progressions.vst3"
@@ -209,7 +178,12 @@ jobs:
           lipo -archs "$BUNDLE/Contents/MacOS/Progressions" | grep -q arm64
           lipo -archs "$BUNDLE/Contents/MacOS/Progressions" | grep -q x86_64
 
-          ditto -c -k --keepParent "$BUNDLE" "dist/Progressions-$VERSION-VST3.zip"
+          # The instructions travel with the plug-in: whoever downloads this
+          # gets both, and nobody has to be told where the VST3 folder is in a
+          # chat message they will not have when they need it.
+          cp packaging/INSTALL.txt "$PAYLOAD/INSTALL.txt"
+
+          ditto -c -k --keepParent "$PAYLOAD" "dist/Progressions-$VERSION.zip"
           ls -lh dist
 
       - uses: actions/upload-artifact@v4
@@ -230,9 +204,7 @@ jobs:
           name: universal-vst3
           path: artifacts
 
-      # Only the bundle is published. The installers still get built and kept
-      # as CI artifacts - they are a purchase away from being useful - but an
-      # unsigned installer is a worse first impression than a folder to drag.
+      # One download: the plug-in and its instructions.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}

@@ -1,0 +1,93 @@
+PROGRESSIONS 1.0.0
+Nowhr Dynamics
+
+Drop in a MIDI clip, or type a chord progression, and Progressions writes the
+parts that go with it: pads, melodies, counter melodies, basslines, arps and
+plucks. Point it at your own MIDI collection and it learns how you write.
+
+This folder holds one plug-in that works on both macOS and Windows.
+
+
+--------------------------------------------------------------------------
+INSTALL - macOS
+--------------------------------------------------------------------------
+
+1. Copy "Progressions.vst3" into:
+
+       ~/Library/Audio/Plug-Ins/VST3/
+
+   The Library folder is hidden. In Finder, open the "Go" menu, hold the
+   Option key, and "Library" appears in the list.
+
+2. If you downloaded this from the internet, run this once in Terminal:
+
+       xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/Progressions.vst3
+
+   Without it macOS refuses to load the plug-in and your DAW skips it
+   silently - no error, it just never shows up. The plug-in is not yet
+   registered with Apple, which is the only reason this step exists.
+
+3. Restart your DAW and rescan your plug-ins.
+   In Ableton Live: Preferences -> Plug-Ins, hold Option and click Rescan.
+
+
+--------------------------------------------------------------------------
+INSTALL - Windows
+--------------------------------------------------------------------------
+
+1. BEFORE extracting the .zip: right-click it, choose Properties, tick
+   "Unblock" at the bottom, and click OK. Then extract.
+
+   Windows marks anything downloaded, the mark passes to the extracted
+   files, and a marked plug-in is refused without a word. If you already
+   extracted, delete the result, unblock the .zip and extract again.
+
+2. Copy the "Progressions.vst3" folder into:
+
+       C:\Program Files\Common Files\VST3\
+
+   It will ask for administrator permission. If your DAW is set to scan a
+   different VST3 folder, copy it there instead.
+
+3. Restart your DAW and rescan your plug-ins.
+   In Ableton Live: Preferences -> Plug-Ins, make sure "Use VST3 Plug-In
+   System Folders" is On, then hold Alt and click Rescan.
+
+
+--------------------------------------------------------------------------
+USING IT
+--------------------------------------------------------------------------
+
+Progressions is an INSTRUMENT, not an audio effect - look under Instruments
+in your plug-in browser.
+
+Load a MIDI clip, type a progression like "Am | F | C | G", or pick one of
+the 36 presets. Choose a part, and drag the result into your DAW with
+"Drag MIDI to your DAW", or save it with "Save .mid".
+
+To make it write with your own habits, click "Learn from my library..." and
+point it at a folder of MIDI. It reads the files, keeps statistics - never
+phrases - and writes with your vocabulary from then on. Your collection
+never leaves your machine, and no clip of yours can be reconstructed from
+what it keeps.
+
+
+--------------------------------------------------------------------------
+PORTUGUES
+--------------------------------------------------------------------------
+
+macOS: copie "Progressions.vst3" para ~/Library/Audio/Plug-Ins/VST3/ (a pasta
+Biblioteca e oculta: no Finder, menu Ir, segure Option). Se baixou da
+internet, rode uma vez no Terminal:
+
+    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/Progressions.vst3
+
+Sem isso o macOS recusa o plugin e o DAW o ignora em silencio.
+
+Windows: ANTES de extrair, botao direito no .zip, Propriedades, marque
+"Desbloquear". So entao extraia e copie a pasta "Progressions.vst3" para
+C:\Program Files\Common Files\VST3\.
+
+Nos dois casos: reinicie o DAW e faca um rescan de plugins. No Ableton Live,
+segure Option (Mac) ou Alt (Windows) ao clicar em Rescan. O Progressions
+aparece em Instrumentos, nao em efeitos.

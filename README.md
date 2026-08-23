@@ -474,10 +474,12 @@ O binário de macOS é universal (Intel e Apple Silicon) e o de Windows não
 depende do Visual C++ Redistributable. O CI falha se qualquer uma dessas
 coisas deixar de ser verdade, ou se o selo do bundle estiver quebrado.
 
-Os instaladores `.pkg` e `.exe` continuam sendo montados e ficam nos artefatos
-do Actions, mas não são publicados: sem certificado de assinatura, um
-instalador que dispara aviso de segurança é uma primeira impressão pior do que
-uma pasta para arrastar.
+Dentro do zip vai também um `INSTALL.txt` com as instruções para os dois
+sistemas — quem baixa não precisa de mais nada.
+
+Não há instalador. Sem certificado de assinatura, um `.exe` ou um `.pkg`
+dispara aviso de segurança e vira uma primeira impressão pior do que uma pasta
+para arrastar.
 
 O build de macOS é **universal** (Intel e Apple Silicon) e o CI falha se não
 for, ou se o selo do bundle estiver quebrado.

@@ -138,8 +138,9 @@ Gerar ideias sem abrir nada:
 
 ## Compartilhar
 
-O jeito fácil: **Actions → o build mais recente → Artifacts** no GitHub, e mande
-o `.pkg` (Mac) ou o `.exe` (Windows). Eles instalam sozinhos.
+O jeito fácil: mande o link das
+[Releases](https://github.com/andrebeltrame/claudeapp/releases). É um zip só,
+serve para Mac e Windows, e leva o `INSTALL.txt` dentro.
 
 Se preferir empacotar o que está na sua máquina:
 
