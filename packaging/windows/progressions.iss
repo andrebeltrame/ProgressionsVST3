@@ -23,10 +23,18 @@ AppVersion={#AppVersion}
 AppPublisher=Nowhr Dynamics
 AppPublisherURL=https://github.com/andrebeltrame/claudeapp
 DefaultDirName={commoncf64}\VST3\Nowhr Dynamics
-DisableDirPage=yes
+; Ask where to install. The default is the shared VST3 folder every DAW
+; scans, so most people just click Next - but a host pointed at its own VST3
+; folder (Steinberg's, say) is common enough that a fixed path leaves those
+; users with a plugin their DAW never looks at.
+DisableDirPage=no
+; What you pick is where it goes, rather than Inno appending the vendor name
+; to a folder you deliberately chose.
+AppendDefaultDirName=no
 DisableProgramGroupPage=yes
 UninstallDisplayName=Progressions
-UninstallFilesDir={commoncf64}\VST3\Nowhr Dynamics\Progressions-uninstall
+; Follows whatever folder was chosen, not the default one.
+UninstallFilesDir={app}\Progressions-uninstall
 OutputDir={#OutputDir}
 OutputBaseFilename=Progressions-{#AppVersion}-Windows
 Compression=lzma2
@@ -38,6 +46,9 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 
 [Messages]
+SelectDirDesc=Where should the VST3 go?
+SelectDirLabel3=Setup will install Progressions into the folder below. This is the shared VST3 folder that DAWs scan by default - click Next unless your DAW is set to look somewhere else, in which case point it there.
+SelectDirBrowseLabel=To continue, click Next. To choose a different VST3 folder, click Browse.
 WelcomeLabel2=This will install Progressions by Nowhr Dynamics.%n%nThe VST3 goes into the shared plug-in folder, so any DAW on this machine will find it. Restart your DAW and rescan your plug-ins afterwards.
 
 [Files]
