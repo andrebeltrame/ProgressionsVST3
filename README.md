@@ -461,24 +461,37 @@ Copie o `.vst3` para `C:\Program Files\Common Files\VST3\Nowhr Dynamics\`.
 Não é preciso compilar nada. Cada push dispara um build no GitHub Actions que
 monta as duas plataformas nas próprias plataformas e publica:
 
-| Arquivo | O que é |
+**Um download serve os dois sistemas.** O `Progressions-1.0.0-VST3.zip` traz um
+único `Progressions.vst3` com os binários de macOS e Windows lado a lado — é
+para isso que o formato de bundle do VST3 existe. Descompacte e copie para:
+
+| Sistema | Pasta |
 |---|---|
-| `Progressions-1.0.0-macOS.pkg` | instalador; põe o VST3 no lugar sozinho |
-| `Progressions-1.0.0-Windows.exe` | idem, no Windows |
-| `...-VST3.zip` | só o bundle, para quem prefere copiar à mão |
-| `Progressions.vst3` (Windows) | arquivo único, para largar direto na pasta VST3 |
+| macOS | `~/Library/Audio/Plug-Ins/VST3/` |
+| Windows | `C:\Program Files\Common Files\VST3\` |
+
+O binário de macOS é universal (Intel e Apple Silicon) e o de Windows não
+depende do Visual C++ Redistributable. O CI falha se qualquer uma dessas
+coisas deixar de ser verdade, ou se o selo do bundle estiver quebrado.
+
+Os instaladores `.pkg` e `.exe` continuam sendo montados e ficam nos artefatos
+do Actions, mas não são publicados: sem certificado de assinatura, um
+instalador que dispara aviso de segurança é uma primeira impressão pior do que
+uma pasta para arrastar.
 
 O build de macOS é **universal** (Intel e Apple Silicon) e o CI falha se não
 for, ou se o selo do bundle estiver quebrado.
 
-Baixe em **Actions → o build mais recente → Artifacts**, ou nas *Releases*
-quando houver uma tag `v*`.
+Baixe nas [Releases](https://github.com/andrebeltrame/claudeapp/releases), ou
+em **Actions → o build mais recente → Artifacts** para uma versão de
+desenvolvimento.
 
-**Enquanto não houver certificados**, os instaladores não são assinados: o
-macOS pede botão direito → Abrir na primeira vez, e o Windows mostra o
-SmartScreen com "Mais informações → Executar assim mesmo". Os ganchos de
-assinatura já estão no lugar — bastam os segredos `MACOS_SIGN_IDENTITY` e
-`MACOS_INSTALLER_IDENTITY` no repositório para que o `.pkg` saia assinado.
+**Enquanto não houver certificado**, o bundle leva assinatura ad-hoc. No macOS
+isso basta para o plugin carregar quando você mesmo o copia; num Mac que
+recebeu o arquivo pela internet, some a quarentena uma vez com
+`xattr -dr com.apple.quarantine` na pasta. No Windows, desbloqueie o `.zip`
+nas Propriedades antes de extrair. O gancho de assinatura já está no lugar —
+basta o segredo `MACOS_SIGN_IDENTITY` no repositório.
 
 > Passe `-DHARMONIA_INSTALL_PLUGIN=ON` e o CMake copia sozinho para
 > `.../VST3/Nowhr Dynamics/` no fim do build, criando a pasta se precisar. O

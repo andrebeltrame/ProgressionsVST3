@@ -157,9 +157,69 @@ jobs:
           name: windows-installer
           path: dist/*
 
+  universal:
+    name: One bundle for both
+    needs: [macos, windows]
+    # On macOS because the signature has to be applied after the Windows binary
+    # goes in - adding a file to a signed bundle breaks the seal, and a broken
+    # seal is refused by macOS with nothing said anywhere.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-installer
+          path: mac
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: win
+
+      - name: Merge, sign, verify
+        env:
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n 's/.*project(Harmonia VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+
+          # A VST3 bundle is designed to hold every platform's binary side by
+          # side, each under its own Contents subfolder. One folder, one
+          # download, and each system picks up its own.
+          mkdir -p merge dist
+          ditto -x -k "mac/Progressions-$VERSION-macOS-VST3.zip" merge
+          BUNDLE="merge/Progressions.vst3"
+
+          mkdir -p "$BUNDLE/Contents/x86_64-win"
+          cp "win/Progressions.vst3" "$BUNDLE/Contents/x86_64-win/Progressions.vst3"
+
+          if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then
+            codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$BUNDLE"
+          else
+            codesign --force --sign - "$BUNDLE"
+          fi
+          codesign -v --strict "$BUNDLE"
+
+          # Both binaries have to be in there and be the right kind of binary.
+          file "$BUNDLE/Contents/MacOS/Progressions"
+          file "$BUNDLE/Contents/x86_64-win/Progressions.vst3"
+          file "$BUNDLE/Contents/MacOS/Progressions" | grep -q "Mach-O universal"
+          file "$BUNDLE/Contents/x86_64-win/Progressions.vst3" | grep -q "PE32+"
+          lipo -archs "$BUNDLE/Contents/MacOS/Progressions" | grep -q arm64
+          lipo -archs "$BUNDLE/Contents/MacOS/Progressions" | grep -q x86_64
+
+          ditto -c -k --keepParent "$BUNDLE" "dist/Progressions-$VERSION-VST3.zip"
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: universal-vst3
+          path: dist/*
+
   release:
     name: Release
-    needs: [engine, macos, windows]
+    needs: [engine, universal]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -167,10 +227,14 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          name: universal-vst3
           path: artifacts
 
+      # Only the bundle is published. The installers still get built and kept
+      # as CI artifacts - they are a purchase away from being useful - but an
+      # unsigned installer is a worse first impression than a folder to drag.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: gh release create "${GITHUB_REF_NAME}" --generate-notes artifacts/*/*
+        run: gh release create "${GITHUB_REF_NAME}" --generate-notes artifacts/*
