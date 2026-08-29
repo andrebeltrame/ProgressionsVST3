@@ -69,7 +69,9 @@ lipo -archs "$BUNDLE/Contents/MacOS/Progressions" | grep -q x86_64
 # The instructions travel with the plug-in: whoever downloads this gets both,
 # and nobody has to be told where the VST3 folder is in a chat message they
 # will not have when they need it.
-cp "$ROOT/packaging/INSTALL.txt" "$PAYLOAD/INSTALL.txt"
+# Stamped rather than typed, so the instructions cannot claim one version
+# while the plug-in beside them is another.
+sed "s/@VERSION@/$VERSION/" "$ROOT/packaging/INSTALL.txt" > "$PAYLOAD/INSTALL.txt"
 
 ditto -c -k --keepParent "$PAYLOAD" "$OUT_DIR/Progressions-$VERSION.zip"
 rm -rf "$PAYLOAD"

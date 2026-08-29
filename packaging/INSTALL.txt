@@ -1,4 +1,4 @@
-PROGRESSIONS 1.0.0
+PROGRESSIONS @VERSION@
 Nowhr Dynamics
 
 Drop in a MIDI clip, or type a chord progression, and Progressions writes the
@@ -12,16 +12,21 @@ This folder holds one plug-in that works on both macOS and Windows.
 INSTALL - macOS
 --------------------------------------------------------------------------
 
-1. Copy "Progressions.vst3" into:
+1. Create a folder called "Nowhr Dynamics" inside:
 
        ~/Library/Audio/Plug-Ins/VST3/
 
+   and copy "Progressions.vst3" into it, so you end up with:
+
+       ~/Library/Audio/Plug-Ins/VST3/Nowhr Dynamics/Progressions.vst3
+
    The Library folder is hidden. In Finder, open the "Go" menu, hold the
-   Option key, and "Library" appears in the list.
+   Option key, and "Library" appears in the list. Hosts scan the VST3
+   folder recursively, so the subfolder only keeps yours tidy.
 
 2. If you downloaded this from the internet, run this once in Terminal:
 
-       xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/Progressions.vst3
+       xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/Nowhr\ Dynamics/Progressions.vst3
 
    Without it macOS refuses to load the plug-in and your DAW skips it
    silently - no error, it just never shows up. The plug-in is not yet
@@ -44,10 +49,11 @@ INSTALL - Windows
 
 2. Copy the "Progressions.vst3" folder into:
 
-       C:\Program Files\Common Files\VST3\
+       C:\Program Files\Common Files\VST3\Nowhr Dynamics\
 
-   It will ask for administrator permission. If your DAW is set to scan a
-   different VST3 folder, copy it there instead.
+   Create the "Nowhr Dynamics" folder if it is not there. It will ask for
+   administrator permission. If your DAW is set to scan a different VST3
+   folder, copy it there instead.
 
 3. Restart your DAW and rescan your plug-ins.
    In Ableton Live: Preferences -> Plug-Ins, make sure "Use VST3 Plug-In
@@ -76,17 +82,18 @@ what it keeps.
 PORTUGUES
 --------------------------------------------------------------------------
 
-macOS: copie "Progressions.vst3" para ~/Library/Audio/Plug-Ins/VST3/ (a pasta
-Biblioteca e oculta: no Finder, menu Ir, segure Option). Se baixou da
-internet, rode uma vez no Terminal:
+macOS: copie "Progressions.vst3" para ~/Library/Audio/Plug-Ins/VST3/Nowhr
+Dynamics/ (crie a pasta "Nowhr Dynamics"; a pasta Biblioteca e oculta: no
+Finder, menu Ir, segure Option). Se baixou da internet, rode uma vez no
+Terminal:
 
-    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/Progressions.vst3
+    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/Nowhr\ Dynamics/Progressions.vst3
 
 Sem isso o macOS recusa o plugin e o DAW o ignora em silencio.
 
 Windows: ANTES de extrair, botao direito no .zip, Propriedades, marque
 "Desbloquear". So entao extraia e copie a pasta "Progressions.vst3" para
-C:\Program Files\Common Files\VST3\.
+C:\Program Files\Common Files\VST3\Nowhr Dynamics\.
 
 Nos dois casos: reinicie o DAW e faca um rescan de plugins. No Ableton Live,
 segure Option (Mac) ou Alt (Windows) ao clicar em Rescan. O Progressions
