@@ -96,6 +96,24 @@ Every generator has a fallback path for when the corpus is empty or
 `styleAmount` is low. Keep it that way — the engine has to work with no library
 at all.
 
+### A generated part declares its loop
+
+`generate()` sets `NoteSequence::loopLengthTicks` and calls `trimToLoop()`, and
+the MIDI writer puts end-of-track there rather than after the last note-off. A
+host sizes an imported clip by the end of the file, so without both a four-bar
+loop whose pad rings over the bar line came into Live as a five-bar clip, and one
+that stopped early came in short. `readFromMemory` records the declared length
+back into the same field, so the reader and the writer say the same thing.
+
+### Nothing detects a meter
+
+`analyze()` copies `sequence.timeSignatureAt(0)` - the time-signature meta event
+of the file - and defaults to 4/4 when there is none. The style model stores
+nothing about metre, so the library cannot influence it. `AnalysisOptions::
+forceTimeSignature` is the only way to disagree with a clip, and the plugin
+exposes it as **Time**. Do not add meter detection without saying so here: the
+current behaviour is "obey the file", and it is what the read-out claims.
+
 ### Generation is deterministic
 
 Same seed plus same `GenerateOptions` must always produce byte-identical MIDI.
@@ -139,6 +157,42 @@ everywhere. Verify against all three clips in `resources/examples/` — a bass, 
 pad and a lead — plus the tests, before and after.
 
 `docs/COMO_FUNCIONA.md` explains why each of these exists.
+
+### The pad anchors, and never overwrites
+
+`GenerateOptions::anchor` is the part everything else is written around. Lines
+enter where it moves (`Context::anchorSlots` pulls the onset grid) and stop
+doubling the voice it holds. It is deliberately **not** a groove donor - that is
+`companion` - because a pad holding one chord a bar says nothing useful about a
+melody's rhythm.
+
+Regenerating the pad leaves the other parts exactly as they were and marks them
+stale instead: losing a melody you had just got right because you nudged a chord
+is worse than being told it no longer fits. The stamp is a fingerprint of the
+pad's notes, not its seed, so turning a knob counts as a different pad.
+
+### One part per channel, all alive at once
+
+The processor keeps a `NoteSequence` per part and publishes a single
+`RenderedPart` carrying all the live ones, each event tagged with its own
+channel (`channelForPart` = base + part index, wrapped into 1..16). `panic()`
+therefore sends all-notes-off on all sixteen channels: the part being replaced
+is not necessarily the one that was sounding.
+
+`previewCharacters` maps channel to a `PreviewCharacter` so the built-in sound
+tells a bass from a pluck once several parts play together. It is written from
+the message thread and read by the voices; a torn read is one note in the wrong
+timbre and nothing worse.
+
+### Undo is a settled-state snapshot
+
+`captureSettledState()` runs at the end of every `regenerate()`, and
+`pushUndoState()` pushes that snapshot - the state *before* the change - onto a
+32-deep stack. Parameter changes arrive one at a time while a knob is being
+dragged, so they only push after 500 ms of quiet; discrete actions (a preset, a
+typed progression, a new idea) always push. `applyStateTree()` is shared with
+`setStateInformation`, which is what makes undo cover the engine's progression
+and not just the parameters.
 
 ### Plugin threading
 

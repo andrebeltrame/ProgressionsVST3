@@ -54,7 +54,7 @@ atualizar, conferir, aprender a coleção, compartilhar.
 | **Melody** | Linha construída sobre um motivo curto e **trabalhado** ao longo da frase: inversão, retrógrado, fragmentação e notas de passagem, com arco de altura (segura, sobe, pico, assenta). O botão **Craft** dosa o quanto. |
 | **Counter** | Igual à melodia, mas empurrada para movimento contrário ao do clipe e proibida de dobrar as suas notas. |
 | **Bass** | Fundamental com quintas, oitavas e aproximações cromáticas para o próximo acorde. |
-| **Arp** | Notas do acorde em Up / Down / Up-Down / Down-Up / Converge / Random. |
+| **Arp** | Notas do acorde em Up / Down / Up-Down / Down-Up / Converge / Random. A corrida em si continua regular — uma corrida embaralhada deixa de ser arpejo — mas **New idea** troca a figura por cima dela: onde a corrida começa, até onde ela alcança, se os ciclos sobem uma oitava e onde ela respira. Os acentos seguem o groove que estiver embaixo. |
 | **Pluck** | Notas curtas do acorde em cima do groove, com saltos e oitavas dobradas nos acentos — o pluck de house. |
 
 As partes são escritas na ordem em que você pede, e **cada uma escuta a
@@ -71,9 +71,28 @@ secundárias, substituições de trítono e empréstimo modal. Cada acorde tamb�
 pode ser empurrado na mão: clique no chip para subir um grau, botão direito para
 descer.
 
+**Partes empilhadas** — o plugin guarda todas as partes que você escreveu e toca
+todas juntas, **cada uma no seu próprio canal MIDI**: pad no 1, chords no 2,
+melody no 3, e assim por diante. No DAW você aponta um instrumento diferente
+para cada canal e o baixo sai do seu sub, o pad do seu synth. O número do canal
+aparece na aba da parte. Desligue **Stack parts** para voltar a ouvir só a parte
+selecionada.
+
+**O pad é a âncora** — as demais partes são escritas por cima dele: entram onde
+ele se movimenta e evitam dobrar a voz que ele está segurando. Se você refizer o
+pad, as partes já escritas **não** são refeitas — perder uma melodia que acabou
+de acertar seria pior — mas ganham um `*` na aba avisando que pertencem a um pad
+que não toca mais.
+
+**Desfazer** — um passo atrás em qualquer coisa da tela: um botão, os acordes
+que você digitou, um preset, uma reharmonização, uma parte removida.
+
 **Saída** — arraste o resultado direto para a timeline do DAW, salve como `.mid`,
-ou use a saída MIDI do plugin para tocar num instrumento seu. Tem um sintetizador
-de preview embutido para ouvir sem ligar nada.
+ou use a saída MIDI do plugin para tocar num instrumento seu. O arquivo escrito
+declara o **loop**, não a última nota: um loop de 4 compassos entra como um clipe
+de 4 compassos mesmo que o pad estivesse segurando uma nota na virada. Tem um
+sintetizador de preview embutido para ouvir sem ligar nada, com um timbre
+diferente por parte.
 
 ---
 
@@ -549,6 +568,18 @@ Detalhes que valem saber:
   Counter.
 - **Chord changes** força a grade harmônica. Em *Auto* o plugin decide; se ele
   achar um acorde só num lead que você sabe que tem quatro, force *1 per bar*.
+- **Stack parts** toca todas as partes escritas ao mesmo tempo, cada uma no seu
+  canal MIDI. No Live, aponte o *MIDI From* de outra pista para a pista do
+  Progressions, escolha o plugin como fonte e filtre o canal que você quer.
+- **Remove part** para de guardar a parte atual; as outras continuam tocando.
+- **Undo** volta um passo em qualquer ajuste da tela.
+- **Spelling** decide se as notas e os acordes aparecem com sustenido ou bemol.
+  Em *Key* ele usa os acidentes que a tonalidade pede. Você pode digitar das duas
+  formas em qualquer ajuste — `Db` e `C#` entram igual.
+- **Time** é a fórmula de compasso. **Nada detecta métrica**: ela é lida do
+  arquivo que você carregou, e é 4/4 quando não há arquivo. Se um clipe declara
+  3/4 mas toca 4/4, é aqui que você discorda dele.
+- **Reharm** dosa o quanto o botão **Reharmonise** reescreve da progressão.
 - A **semente** aparece no painel: mesma semente + mesmos controles = exatamente
   a mesma ideia, sempre. Ela é salva no projeto, junto com o clipe e a progressão.
 

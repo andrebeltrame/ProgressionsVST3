@@ -251,6 +251,9 @@ private:
     RenderedPart::Ptr activePart;
 
     juce::Synthesiser previewSynth;
+    /** Channel -> preview character, so the built-in sound tells a bass from a
+        pluck once several parts are playing at once. */
+    PreviewCharacterMap previewCharacters { };
     juce::MidiBuffer scratchMidi;
     juce::File dragFile;
 

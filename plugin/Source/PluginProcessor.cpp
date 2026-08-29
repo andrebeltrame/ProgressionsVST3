@@ -134,7 +134,7 @@ ProgressionsProcessor::ProgressionsProcessor()
 
     previewSynth.addSound(new PreviewSound());
     for (int i = 0; i < 16; ++i)
-        previewSynth.addVoice(new PreviewVoice());
+        previewSynth.addVoice(new PreviewVoice(previewCharacters));
 
     seed = static_cast<juce::uint32>(juce::Random::getSystemRandom().nextInt(1000000) + 1);
 
@@ -438,6 +438,14 @@ void ProgressionsProcessor::republishParts()
     }
 
     mix->sortEvents();
+
+    // Tell the preview voices which part each channel is carrying, so the
+    // built-in sound is at least the right shape for what it is playing.
+    for (auto& entry : previewCharacters)
+        entry.store(0, std::memory_order_relaxed);
+    for (int part = 0; part < kNumParts; ++part)
+        previewCharacters[static_cast<size_t>(channelForPart(part))].store(part, std::memory_order_relaxed);
+
     publish(mix);
 }
 
