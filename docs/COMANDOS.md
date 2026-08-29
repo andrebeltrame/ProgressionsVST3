@@ -185,3 +185,24 @@ mesmo):
 ```bash
 rm -f ~/Library/Application\ Support/Nowhr\ Dynamics/Progressions/library.style.json
 ```
+
+## Montar o zip no Mac quando o CI não consegue
+
+Os dois binários vêm do CI, mas a junção é local. Baixe da página do run os
+artefatos `macos-build` e `windows-build`, e rode:
+
+```
+cd ~/Downloads
+unzip -o macos-build.zip
+unzip -o windows-build.zip
+cd ~/caminho/para/claudeapp
+packaging/merge.sh ~/Downloads/macos-bundle.zip ~/Downloads/Progressions.vst3 ~/Desktop
+```
+
+Sai `Progressions-<versão>.zip` no Desktop, com o bundle universal e o
+`INSTALL.txt`. O script confere o que montou: Mach-O universal com as duas
+arquiteturas, PE32+ do lado Windows, e `codesign -v --strict`.
+
+A assinatura tem que vir **depois** de colocar o binário Windows dentro: mexer
+num bundle já assinado quebra o selo, e um selo quebrado o macOS recusa sem
+dizer nada — o plugin simplesmente não aparece na lista do DAW.

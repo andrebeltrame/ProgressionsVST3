@@ -145,46 +145,12 @@ jobs:
           name: windows-build
           path: win
 
+      # The same script anyone can run on a Mac when CI cannot get a runner,
+      # rather than a copy of it that only exists in this file.
       - name: Merge, sign, verify
         env:
           MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
-        run: |
-          set -euo pipefail
-          VERSION=$(sed -n 's/.*project(Harmonia VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
-
-          # A VST3 bundle is designed to hold every platform's binary side by
-          # side, each under its own Contents subfolder. One folder, one
-          # download, and each system picks up its own.
-          PAYLOAD="Progressions-$VERSION"
-          mkdir -p "$PAYLOAD" dist
-          ditto -x -k "mac/macos-bundle.zip" "$PAYLOAD"
-          BUNDLE="$PAYLOAD/Progressions.vst3"
-
-          mkdir -p "$BUNDLE/Contents/x86_64-win"
-          cp "win/Progressions.vst3" "$BUNDLE/Contents/x86_64-win/Progressions.vst3"
-
-          if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then
-            codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$BUNDLE"
-          else
-            codesign --force --sign - "$BUNDLE"
-          fi
-          codesign -v --strict "$BUNDLE"
-
-          # Both binaries have to be in there and be the right kind of binary.
-          file "$BUNDLE/Contents/MacOS/Progressions"
-          file "$BUNDLE/Contents/x86_64-win/Progressions.vst3"
-          file "$BUNDLE/Contents/MacOS/Progressions" | grep -q "Mach-O universal"
-          file "$BUNDLE/Contents/x86_64-win/Progressions.vst3" | grep -q "PE32+"
-          lipo -archs "$BUNDLE/Contents/MacOS/Progressions" | grep -q arm64
-          lipo -archs "$BUNDLE/Contents/MacOS/Progressions" | grep -q x86_64
-
-          # The instructions travel with the plug-in: whoever downloads this
-          # gets both, and nobody has to be told where the VST3 folder is in a
-          # chat message they will not have when they need it.
-          cp packaging/INSTALL.txt "$PAYLOAD/INSTALL.txt"
-
-          ditto -c -k --keepParent "$PAYLOAD" "dist/Progressions-$VERSION.zip"
-          ls -lh dist
+        run: packaging/merge.sh mac/macos-bundle.zip win/Progressions.vst3 dist
 
       - uses: actions/upload-artifact@v4
         with:
