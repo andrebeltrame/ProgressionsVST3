@@ -73,10 +73,15 @@ descer.
 
 **Partes empilhadas** — o plugin guarda todas as partes que você escreveu e toca
 todas juntas, **cada uma no seu próprio canal MIDI**: pad no 1, chords no 2,
-melody no 3, e assim por diante. No DAW você aponta um instrumento diferente
-para cada canal e o baixo sai do seu sub, o pad do seu synth. O número do canal
-aparece na aba da parte. Desligue **Stack parts** para voltar a ouvir só a parte
-selecionada.
+melody no 3, e assim por diante. O número do canal aparece na aba da parte.
+Desligue **Stack parts** para voltar a ouvir só a parte selecionada.
+
+Uma ressalva que importa se você usa **Ableton Live**: o Live descarta o canal
+MIDI ao rotear de um plugin para outra pista — canal só significa alguma coisa
+na entrada e na saída de uma pista, não dentro dela. Os canais separados servem
+em Cubase, Reaper, Bitwig e afins; no Live, o caminho é arrastar cada parte para
+a sua pista, que é o que o botão de arrastar faz e o que os clipes com loop
+correto agora garantem.
 
 **O pad é a âncora** — as demais partes são escritas por cima dele: entram onde
 ele se movimenta e evitam dobrar a voz que ele está segurando. Se você refizer o
@@ -569,8 +574,10 @@ Detalhes que valem saber:
 - **Chord changes** força a grade harmônica. Em *Auto* o plugin decide; se ele
   achar um acorde só num lead que você sabe que tem quatro, force *1 per bar*.
 - **Stack parts** toca todas as partes escritas ao mesmo tempo, cada uma no seu
-  canal MIDI. No Live, aponte o *MIDI From* de outra pista para a pista do
-  Progressions, escolha o plugin como fonte e filtre o canal que você quer.
+  canal MIDI. No Live, para mandar a saída MIDI para outro instrumento: na pista
+  de destino, *MIDI From* → a pista do Progressions, e no seletor de baixo
+  escolha **Progressions** (o plugin), com Monitor em **In**. Como o Live junta
+  os canais, faça isso com **Stack parts desligado**, uma parte por vez.
 - **Remove part** para de guardar a parte atual; as outras continuam tocando.
 - **Undo** volta um passo em qualquer ajuste da tela.
 - **Spelling** decide se as notas e os acordes aparecem com sustenido ou bemol.

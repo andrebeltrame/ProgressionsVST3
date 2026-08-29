@@ -206,3 +206,27 @@ arquiteturas, PE32+ do lado Windows, e `codesign -v --strict`.
 A assinatura tem que vir **depois** de colocar o binário Windows dentro: mexer
 num bundle já assinado quebra o selo, e um selo quebrado o macOS recusa sem
 dizer nada — o plugin simplesmente não aparece na lista do DAW.
+
+## Roteamento no Ableton Live
+
+O Live **descarta o canal MIDI** ao rotear de um plugin para outra pista: canal
+só tem significado na entrada e na saída de uma pista, não dentro dela. Os
+canais por parte do Progressions servem em Cubase, Reaper e Bitwig; no Live,
+use um destes dois caminhos.
+
+**Arrastar cada parte (recomendado).** Cada parte vira um clipe independente na
+pista do instrumento dela.
+
+1. Na janela do Progressions, escolha a aba da parte (Pad).
+2. Arraste **Drag MIDI to your DAW** para a pista que tem o instrumento do pad.
+3. Clique na aba seguinte (Bass) e arraste para a pista do baixo. E assim por
+   diante.
+
+**Saída MIDI ao vivo, uma parte por vez.**
+
+1. Desligue **Stack parts** no Progressions — senão as partes chegam somadas.
+2. Na pista do instrumento de destino: *MIDI From* → a pista do Progressions.
+3. No seletor logo abaixo, escolha **Progressions** (o plugin), e não
+   *Track In* / *Pre FX* / *Post FX*.
+4. Monitor em **In**.
+5. Desligue **Preview sound** no plugin, senão você ouve os dois.
