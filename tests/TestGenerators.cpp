@@ -368,3 +368,98 @@ TEST(EveryPartTypeProducesNotes)
         }
     }
 }
+
+TEST(NoPartRingsPastTheLoop)
+{
+    auto engine = engineFromBassLine();
+    for (PartType part : { PartType::Pad, PartType::Chords, PartType::Melody,
+                           PartType::CounterMelody, PartType::Bass, PartType::Arp,
+                           PartType::Pluck })
+    {
+        const auto sequence = engine.generate(cleanOptions(part));
+        CHECK(sequence.loopLengthTicks > 0);
+        // A whole number of bars, and nothing sounding past the last one - that
+        // is what stops a host importing a four-bar loop as a five-bar clip.
+        CHECK(sequence.loopLengthTicks % sequence.ticksPerBar() == 0);
+        for (const auto& note : sequence.notes)
+            CHECK(note.endTick() <= sequence.loopLengthTicks);
+    }
+}
+
+TEST(ArpRespondsToANewSeed)
+{
+    auto engine = engineFromBassLine();
+
+    // Every pattern, not just Random: the fixed runs used to be fully determined
+    // by the chord, so "New idea" left the arp exactly as it was.
+    for (ArpPattern pattern : { ArpPattern::Up, ArpPattern::Down, ArpPattern::UpDown,
+                                ArpPattern::DownUp, ArpPattern::Converge, ArpPattern::Random })
+    {
+        auto options = cleanOptions(PartType::Arp);
+        options.arpPattern = pattern;
+
+        options.seed = 42;
+        const auto first = engine.generate(options);
+        options.seed = 43;
+        const auto second = engine.generate(options);
+
+        CHECK(! first.empty() && ! second.empty());
+        CHECK(pitches(first) != pitches(second));
+
+        // And still deterministic: the same seed has to give the same notes.
+        options.seed = 42;
+        CHECK(pitches(engine.generate(options)) == pitches(first));
+    }
+}
+
+TEST(PartsWrittenAgainstAPadStayOutOfItsWay)
+{
+    auto engine = engineFromBassLine();
+    const auto pad = engine.generate(cleanOptions(PartType::Pad));
+    CHECK(! pad.empty());
+
+    const auto topAt = [&pad](int64_t tick)
+    {
+        int top = -1;
+        for (const auto& note : pad.notes)
+            if (note.startTick <= tick && tick < note.endTick())
+                top = std::max(top, note.pitch);
+        return top;
+    };
+
+    // How often a line either doubles the pad's top voice or sits a semitone
+    // under it - the two ways a melody disappears into the chord it is over.
+    const auto clashes = [&topAt](const NoteSequence& part)
+    {
+        int count = 0;
+        for (const auto& note : part.notes)
+        {
+            const int top = topAt(note.startTick);
+            if (top >= 0 && (note.pitch == top || mod12(note.pitch - top) == 1))
+                ++count;
+        }
+        return count;
+    };
+
+    int alone = 0;
+    int overPad = 0;
+    int different = 0;
+    for (uint32_t seed = 1; seed <= 8; ++seed)
+    {
+        auto options = cleanOptions(PartType::Melody);
+        options.seed = seed;
+        const auto without = engine.generate(options);
+        options.anchor = &pad;
+        const auto with = engine.generate(options);
+
+        CHECK(! with.empty());
+        if (pitches(without) != pitches(with))
+            ++different;
+        alone += clashes(without);
+        overPad += clashes(with);
+    }
+
+    // Reading the pad has to change the line, or the anchor does nothing at all.
+    CHECK(different == 8);
+    CHECK(overPad < alone);
+}

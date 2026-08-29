@@ -64,6 +64,14 @@ struct GenerateOptions
         harmonically. Borrowed pointer; must outlive the generate() call. */
     const NoteSequence* companion = nullptr;
 
+    /** The part everything else is written around - in the plugin, the pad. The
+        new part enters where the anchor moves and keeps out of the way of the
+        voices it is holding. Deliberately not a groove donor: a pad holding one
+        chord a bar says nothing useful about a melody's rhythm, so the anchor
+        shapes where a line lands and which notes it avoids, never its feel.
+        Borrowed pointer; must outlive the generate() call. */
+    const NoteSequence* anchor = nullptr;
+
     /** Everything learned from your own collection: which bars you play, how
         your lines move, what you put over a root. Borrowed pointer - it only has
         to outlive the generate() call. */

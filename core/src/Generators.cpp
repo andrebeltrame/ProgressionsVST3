@@ -83,6 +83,10 @@ struct Context
     std::vector<ChordSegment> progression;
     /** The groove the generators write against: the source clip's, or a donor. */
     RhythmProfile rhythm;
+    /** Weight per 16th slot of a bar where the anchor part starts notes, empty
+        when there is no anchor. Parts lean towards entering with it. */
+    std::array<float, 16> anchorSlots { };
+    bool hasAnchor = false;
     Key key;
 
     /** True when the corpus has material for this role and the dice agree. */
@@ -182,6 +186,15 @@ std::vector<Onset> buildOnsets(Context& ctx, float density, float legato, bool u
     // pick a learned bar and to shape a generated one.
     const float targetOnsets = 1.0f + multiplier * 9.0f;
 
+    // Where the anchor moves, this part is encouraged to move too. It is a pull,
+    // not a rule - a line that only ever lands with the pad stops being a line.
+    const auto anchorPull = [&ctx](int slot)
+    {
+        if (! ctx.hasAnchor)
+            return 0.0f;
+        return ctx.anchorSlots[static_cast<size_t>(slot % 16)];
+    };
+
     struct Hit
     {
         int64_t tick;
@@ -225,7 +238,10 @@ std::vector<Onset> buildOnsets(Context& ctx, float density, float legato, bool u
                 const float weight = (1.0f - sourceInfluence) * slotWeight(slot)
                                    + sourceInfluence * rhythm.grid[static_cast<size_t>(slot)];
 
-                const float probability = std::clamp(weight * multiplier, 0.0f, 0.96f);
+                // A bar lifted from the corpus is the user's own material and is
+                // left exactly as learned; only a generated bar takes the pull.
+                const float probability = std::clamp((weight + 0.35f * anchorPull(slot)) * multiplier,
+                                                     0.0f, 0.96f);
                 if (ctx.rng.chance(probability))
                     cell.hits.push_back({ slot * slotTicks, 0, 0 });
             }
@@ -286,7 +302,7 @@ std::vector<Onset> buildOnsets(Context& ctx, float density, float legato, bool u
             onset.length = std::max<int64_t>(slotTicks / 2, static_cast<int64_t>(static_cast<double>(gap) * legato));
         }
         const int slot = static_cast<int>((hits[i].tick % ctx.barTicks) / slotTicks);
-        onset.accent = slotWeight(slot);
+        onset.accent = std::min(1.0f, slotWeight(slot) + 0.25f * anchorPull(slot));
         onsets.push_back(onset);
     }
     return onsets;
@@ -650,8 +666,50 @@ NoteSequence writeArp(Context& ctx)
     const int64_t step = options.density < 0.45f ? std::max<int64_t>(1, ctx.beatTicks / 2)
                                                  : std::max<int64_t>(1, ctx.beatTicks / 4);
     const double gate = 0.55 + 0.35 * (1.0 - static_cast<double>(options.density));
+    const int slotsPerBar = 16;
+    const int64_t gridSlot = std::max<int64_t>(1, ctx.barTicks / slotsPerBar);
 
-    int index = 0;
+    // An arp is a figure, not a phrase: the run itself has to stay regular or it
+    // stops being an arp. So a new seed does not scramble the notes - it picks a
+    // different figure over the same chords. Without these the pattern is fully
+    // determined by the chord and the seed changes nothing at all, which is
+    // exactly how it behaved before.
+    const int rotation = ctx.rng.range(0, 7);              // where the run starts
+    const int octaveSpan = ctx.rng.chance(0.4f) ? 2 : 1;   // how far it reaches
+    const bool liftCycles = ctx.rng.chance(0.35f);         // octave jump each cycle
+    const int cycleLength = ctx.rng.range(3, 8);
+    const float restChance = 0.06f * ctx.rng.unit() * (1.0f - options.density);
+
+    // How much the groove under the plugin - the source clip, a donor, or the
+    // learned corpus - is allowed to shape the accents. The run stays even; only
+    // its weight moves, which is what makes an arp sit in a track instead of on
+    // top of it.
+    float grooveInfluence = 0.0f;
+    if (options.followSourceRhythm || options.useGrooveDonor || options.companion != nullptr)
+    {
+        int activeSlots = 0;
+        for (float value : ctx.rhythm.grid)
+            if (value > 0.15f)
+                ++activeSlots;
+        grooveInfluence = activeSlots >= 4 ? (options.useGrooveDonor ? 0.75f : 0.5f)
+                                           : (activeSlots >= 2 ? 0.3f : 0.0f);
+    }
+    if (grooveInfluence <= 0.0f && ctx.useStyle(StyleRole::Arp))
+    {
+        const float targetOnsets = 4.0f + 8.0f * std::clamp(options.density, 0.0f, 1.0f);
+        if (const auto* learned = pickPattern(*ctx.style(), StyleRole::Arp, targetOnsets, ctx.rng))
+        {
+            grooveInfluence = 0.55f;
+            for (int slot = 0; slot < slotsPerBar; ++slot)
+                ctx.rhythm.grid[static_cast<size_t>(slot)] =
+                    learned->hasOnset(slot)
+                        ? std::clamp(static_cast<float>(learned->velocity[static_cast<size_t>(slot)]) / 127.0f,
+                                     0.2f, 1.0f)
+                        : 0.0f;
+        }
+    }
+
+    int index = rotation;
     bool ascending = options.arpPattern != ArpPattern::Down && options.arpPattern != ArpPattern::DownUp;
 
     for (int64_t t = 0; t < ctx.totalTicks; t += step, ++index)
@@ -661,7 +719,10 @@ NoteSequence writeArp(Context& ctx)
 
         // Spread the chord tones across the available register.
         std::vector<int> tones;
-        for (int pitch = ctx.lowPitch; pitch <= ctx.highPitch; ++pitch)
+        const int ceiling = octaveSpan >= 2
+                                ? ctx.highPitch
+                                : std::min(ctx.highPitch, ctx.lowPitch + 14);
+        for (int pitch = ctx.lowPitch; pitch <= ceiling; ++pitch)
             if (chord.containsPitchClass(pitch))
                 tones.push_back(pitch);
         if (tones.empty())
@@ -694,13 +755,26 @@ NoteSequence writeArp(Context& ctx)
         }
         toneIndex = std::clamp(toneIndex, 0, size - 1);
 
+        const int slot = static_cast<int>((t % ctx.barTicks) / gridSlot);
+        const float positional = slotWeight(slot);
+        const float groove = ctx.rhythm.grid.empty()
+                                 ? positional
+                                 : ctx.rhythm.grid[static_cast<size_t>(slot % slotsPerBar)];
+        const float weight = positional * (1.0f - grooveInfluence) + groove * grooveInfluence;
+
+        // Never drop a downbeat - a hole there reads as a mistake, not a figure.
+        if (slot != 0 && restChance > 0.0f && ctx.rng.chance(restChance * (1.0f - weight)))
+            continue;
+
         Note note;
         note.startTick = t;
         note.lengthTick = std::max<int64_t>(1, static_cast<int64_t>(static_cast<double>(step) * gate));
         note.pitch = tones[static_cast<size_t>(toneIndex)];
-        const int slot = static_cast<int>((t % ctx.barTicks) / std::max<int64_t>(1, ctx.slotTicks));
+        if (liftCycles && (index / std::max(1, cycleLength)) % 2 == 1
+            && note.pitch + 12 <= ctx.highPitch)
+            note.pitch += 12;
         note.velocity = std::clamp(static_cast<int>(static_cast<float>(options.baseVelocity)
-                                                    * (0.72f + 0.28f * slotWeight(slot))),
+                                                    * (0.72f + 0.28f * weight)),
                                    1, 127);
         note.channel = options.channel;
         out.notes.push_back(note);
@@ -918,17 +992,37 @@ NoteSequence writeMelodicLine(Context& ctx, bool counterMelody)
         && ctx.analysis->role == SourceRole::Bass)
         companion = ctx.source;
 
-    const auto companionPitchAt = [companion](int64_t tick) -> int
+    const auto soundingPitchAt = [](const NoteSequence* part, int64_t tick) -> int
     {
-        if (companion == nullptr)
+        if (part == nullptr)
             return -1;
         int pitch = -1;
-        for (const auto& note : companion->notes)
+        for (const auto& note : part->notes)
         {
             if (note.startTick > tick)
                 break;
             if (tick < note.endTick())
                 pitch = note.pitch;
+        }
+        return pitch;
+    };
+
+    const auto companionPitchAt = [&](int64_t tick) { return soundingPitchAt(companion, tick); };
+
+    // The top voice of the pad. A melody that lands on it disappears into the
+    // chord instead of sitting over it.
+    const NoteSequence* anchor = ctx.options->anchor;
+    const auto anchorTopAt = [anchor](int64_t tick) -> int
+    {
+        if (anchor == nullptr)
+            return -1;
+        int pitch = -1;
+        for (const auto& note : anchor->notes)
+        {
+            if (note.startTick > tick)
+                break;
+            if (tick < note.endTick())
+                pitch = std::max(pitch, note.pitch);
         }
         return pitch;
     };
@@ -1030,6 +1124,23 @@ NoteSequence writeMelodicLine(Context& ctx, bool counterMelody)
                 pitch = clampPitch(nearestChordTone(pitch - 3, segment.chord), ctx.lowPitch, ctx.highPitch);
                 if (pitch == sourcePitch)
                     pitch = clampPitch(ctx.key.snapToScale(pitch - 2, -1), ctx.lowPitch, ctx.highPitch);
+            }
+        }
+
+        // Doubling the pad's top voice on a strong beat buries the line inside
+        // the chord, and a semitone off it is the same minor ninth the bass
+        // check guards against. Last of all, so nothing above can undo it.
+        if (onset.accent >= 0.7f)
+        {
+            const int top = anchorTopAt(onset.tick);
+            for (int attempt = 0; attempt < 3 && top >= 0
+                                 && (pitch == top || mod12(pitch - top) == 1); ++attempt)
+            {
+                const int stepped = clampPitch(nearestChordTone(pitch + 2 + attempt, segment.chord),
+                                               ctx.lowPitch, ctx.highPitch);
+                pitch = (stepped == pitch) ? clampPitch(ctx.key.snapToScale(pitch + 2, 1),
+                                                        ctx.lowPitch, ctx.highPitch)
+                                           : stepped;
             }
         }
 
@@ -1184,6 +1295,26 @@ NoteSequence generate(const Analysis& analysis, const NoteSequence& source, cons
     ctx.bars = options.bars > 0 ? options.bars : std::max(1, analysis.bars);
     ctx.totalTicks = static_cast<int64_t>(ctx.bars) * ctx.barTicks;
 
+    // Fold the anchor's note starts onto one bar, so every bar of the new part
+    // knows where the pad moves.
+    if (options.anchor != nullptr && ! options.anchor->empty())
+    {
+        const int64_t slotTicks = std::max<int64_t>(1, ctx.barTicks / 16);
+        float peak = 0.0f;
+        for (const auto& note : options.anchor->notes)
+        {
+            const int slot = static_cast<int>((note.startTick % ctx.barTicks) / slotTicks) % 16;
+            ctx.anchorSlots[static_cast<size_t>(slot)] += 1.0f;
+            peak = std::max(peak, ctx.anchorSlots[static_cast<size_t>(slot)]);
+        }
+        if (peak > 0.0f)
+        {
+            for (auto& value : ctx.anchorSlots)
+                value /= peak;
+            ctx.hasAnchor = true;
+        }
+    }
+
     // Loop the analysed progression until the requested length is filled.
     const int64_t sourceLoop = std::max<int64_t>(ctx.barTicks, analysis.lengthTicks);
     for (int64_t offset = 0; offset < ctx.totalTicks; offset += sourceLoop)
@@ -1233,6 +1364,14 @@ NoteSequence generate(const Analysis& analysis, const NoteSequence& source, cons
         note.lengthTick = std::max<int64_t>(ctx.slotTicks / 4, note.lengthTick);
         note.channel = options.channel;
     }
+
+    // The part fills exactly the loop it was asked for. Anything ringing over
+    // the final bar line is cut there rather than left to stretch the clip the
+    // host imports, and the length is recorded so a part that stops early still
+    // writes a file as long as the loop.
+    out.loopLengthTicks = ctx.totalTicks;
+    out.trimToLoop();
+
     out.sort();
     return out;
 }

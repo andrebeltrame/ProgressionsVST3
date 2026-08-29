@@ -66,6 +66,20 @@ const char* numeralSuffix(ChordType type);
 /** Scale steps as semitone offsets from the tonic. */
 const std::vector<int>& scaleIntervals(ScaleType type);
 
+/** How the user wants notes spelled. Auto follows the key, which is what reads
+    right musically; the other two are the b/# switch, for when someone is
+    copying a progression written one way and wants to see it that way. */
+enum class AccidentalStyle
+{
+    Auto,
+    Sharps,
+    Flats
+};
+
+struct Key;
+/** The single place anything asks "sharps or flats here?". */
+bool useFlatsFor(const Key& key, AccidentalStyle style);
+
 std::string pitchClassName(int pitchClass, bool preferFlats = false);
 std::string noteName(int midiPitch, bool preferFlats = false);
 

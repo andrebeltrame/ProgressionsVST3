@@ -190,6 +190,13 @@ bool readFromMemory(const uint8_t* data, size_t size, NoteSequence& out, std::st
                 {
                     out.name.assign(reinterpret_cast<const char*>(r.data + metaStart), length);
                 }
+                else if (metaType == 0x2f)
+                {
+                    // End of track. Hosts size an imported clip by this, so it is
+                    // the file's own statement of how long it is - which is not
+                    // always where the last note stops.
+                    out.loopLengthTicks = std::max(out.loopLengthTicks, tick);
+                }
 
                 r.pos = metaStart + length;
                 continue;
@@ -402,7 +409,12 @@ std::vector<uint8_t> writeToMemory(const NoteSequence& seq)
             track.push_back(e.data2);
         }
 
-        putVlq(track, 0);
+        // End of track at the end of the loop, not at the last note-off. A host
+        // sizes an imported clip by the end of the file, so a four-bar loop whose
+        // last note stops early would come in short, and one whose pad rings over
+        // the bar line would come in long - the five-bar clip for a four-chord
+        // progression that started this.
+        putVlq(track, static_cast<uint32_t>(std::max<int64_t>(0, copy.playbackLengthTicks() - last)));
         track.insert(track.end(), { 0xff, 0x2f, 0x00 });
         appendTrack(track);
     }

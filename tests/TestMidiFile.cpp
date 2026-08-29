@@ -92,3 +92,23 @@ TEST(MidiHandlesRunningStatus)
     CHECK(midi::readFromMemory(file.data(), file.size(), loaded, error));
     CHECK_EQ(loaded.notes.size(), size_t(2));
 }
+
+TEST(WrittenFileIsAsLongAsTheLoop)
+{
+    NoteSequence seq;
+    seq.ppq = kPPQ;
+    seq.loopLengthTicks = kPPQ * 16; // four bars
+    // One short note near the start: the file must still declare four bars.
+    seq.notes.push_back({ 0, kPPQ / 2, 60, 100, 0 });
+
+    const auto bytes = midi::writeToMemory(seq);
+    std::string error;
+    NoteSequence readBack;
+    CHECK(midi::readFromMemory(bytes.data(), bytes.size(), readBack, error));
+    CHECK(readBack.notes.size() == 1);
+
+    // The notes stop well before the end, but the file says four bars - which is
+    // the length a host gives the clip.
+    CHECK(readBack.lengthTicks() < readBack.ppq * 16);
+    CHECK(readBack.loopLengthTicks == static_cast<int64_t>(readBack.ppq) * 16);
+}

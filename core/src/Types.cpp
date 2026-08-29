@@ -18,6 +18,7 @@ void NoteSequence::clear()
     timeSignatures.clear();
     tempos.clear();
     name.clear();
+    loopLengthTicks = 0;
 }
 
 void NoteSequence::sort()
@@ -40,6 +41,29 @@ int64_t NoteSequence::lengthTicks() const noexcept
     for (const auto& n : notes)
         end = std::max(end, n.endTick());
     return end;
+}
+
+int64_t NoteSequence::playbackLengthTicks() const noexcept
+{
+    return loopLengthTicks > 0 ? loopLengthTicks : lengthTicks();
+}
+
+void NoteSequence::trimToLoop()
+{
+    if (loopLengthTicks <= 0)
+        return;
+
+    std::vector<Note> kept;
+    kept.reserve(notes.size());
+    for (auto& n : notes)
+    {
+        if (n.startTick >= loopLengthTicks)
+            continue;
+        n.lengthTick = std::min(n.lengthTick, loopLengthTicks - n.startTick);
+        if (n.lengthTick > 0)
+            kept.push_back(n);
+    }
+    notes.swap(kept);
 }
 
 int64_t NoteSequence::firstTick() const noexcept
@@ -108,6 +132,7 @@ void NoteSequence::changePPQ(int newPPQ)
         ts.startTick = rescale(ts.startTick);
     for (auto& t : tempos)
         t.startTick = rescale(t.startTick);
+    loopLengthTicks = rescale(loopLengthTicks);
 
     ppq = newPPQ;
 }

@@ -222,6 +222,17 @@ const std::vector<int>& scaleIntervals(ScaleType type)
     return kMajor;
 }
 
+bool useFlatsFor(const Key& key, AccidentalStyle style)
+{
+    switch (style)
+    {
+        case AccidentalStyle::Sharps: return false;
+        case AccidentalStyle::Flats:  return true;
+        case AccidentalStyle::Auto:
+        default:                      return key.preferFlats();
+    }
+}
+
 std::string pitchClassName(int pitchClass, bool preferFlats)
 {
     const int pc = mod12(pitchClass);

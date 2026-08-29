@@ -42,6 +42,12 @@ struct NoteSequence
     std::vector<TempoEvent> tempos;
     int ppq = kPPQ;
     std::string name;
+    /** The loop this sequence is meant to fill, in ticks. Zero means "as long as
+        the notes happen to be". A generated part sets it so the written MIDI file
+        declares the loop rather than ending on its last note-off - a host sizes an
+        imported clip by the end of the file, so a note ringing past the final bar
+        would otherwise stretch the clip past the loop. */
+    int64_t loopLengthTicks = 0;
 
     bool empty() const noexcept { return notes.empty(); }
     void clear();
@@ -49,7 +55,13 @@ struct NoteSequence
     /** Sorts by start tick, then pitch. */
     void sort();
 
+    /** The end of the last note. */
     int64_t lengthTicks() const noexcept;
+    /** loopLengthTicks when one was declared, the end of the last note otherwise. */
+    int64_t playbackLengthTicks() const noexcept;
+    /** Shortens anything crossing the loop so nothing sounds past it. Notes that
+        start on or after the loop end are dropped. Does nothing without a loop. */
+    void trimToLoop();
     int64_t firstTick() const noexcept;
 
     double bpm() const noexcept;
