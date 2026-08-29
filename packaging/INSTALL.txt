@@ -57,7 +57,19 @@ INSTALL - Windows
 
 3. Restart your DAW and rescan your plug-ins.
    In Ableton Live: Preferences -> Plug-Ins, make sure "Use VST3 Plug-In
-   System Folders" is On, then hold Alt and click Rescan.
+   System Folders" is On, then hold Alt and click Rescan. Holding Alt is
+   what makes Live re-examine a plug-in it has already refused once.
+
+IF IT STILL DOES NOT APPEAR
+
+   Some Windows hosts do not read the bundle folder. This download also
+   holds the same plug-in as a single file, in "Windows - single file".
+
+   Delete the "Progressions.vst3" FOLDER you copied in step 2, then copy
+   the "Progressions.vst3" FILE from that folder into the same place.
+   Use one or the other, never both, or the plug-in is listed twice.
+
+   Then hold Alt and Rescan again.
 
 
 --------------------------------------------------------------------------
@@ -94,6 +106,11 @@ Sem isso o macOS recusa o plugin e o DAW o ignora em silencio.
 Windows: ANTES de extrair, botao direito no .zip, Propriedades, marque
 "Desbloquear". So entao extraia e copie a pasta "Progressions.vst3" para
 C:\Program Files\Common Files\VST3\Nowhr Dynamics\.
+
+Se mesmo assim o plugin nao aparecer na lista: apague a PASTA que voce
+copiou e use no lugar o ARQUIVO "Progressions.vst3" que esta em
+"Windows - single file". Um ou outro, nunca os dois. Segure Alt ao clicar
+em Rescan - e isso que faz o Live reexaminar um plugin que ele ja recusou.
 
 Nos dois casos: reinicie o DAW e faca um rescan de plugins. No Ableton Live,
 segure Option (Mac) ou Alt (Windows) ao clicar em Rescan. O Progressions

@@ -66,6 +66,15 @@ file "$BUNDLE/Contents/x86_64-win/Progressions.vst3" | grep -q "PE32+"
 lipo -archs "$BUNDLE/Contents/MacOS/Progressions" | grep -q arm64
 lipo -archs "$BUNDLE/Contents/MacOS/Progressions" | grep -q x86_64
 
+# The same Windows binary again, on its own. A bundle folder is the layout the
+# VST3 spec asks for and most hosts read it, but a Windows user has already hit
+# a host that would not - it scanned, finished, and simply never listed the
+# plug-in, with nothing said anywhere. The DLL is a complete module by itself,
+# so shipping it costs one copy and gives that person something to try instead
+# of nothing.
+mkdir -p "$PAYLOAD/Windows - single file"
+cp "$WIN_DLL" "$PAYLOAD/Windows - single file/Progressions.vst3"
+
 # The instructions travel with the plug-in: whoever downloads this gets both,
 # and nobody has to be told where the VST3 folder is in a chat message they
 # will not have when they need it.
