@@ -8,6 +8,14 @@ ProgressionStrip::ProgressionStrip()
     setTooltip("Click a chord to move it up a degree, right-click to move it down.");
 }
 
+void ProgressionStrip::setPreferFlats(bool shouldPreferFlats)
+{
+    if (preferFlats == shouldPreferFlats)
+        return;
+    preferFlats = shouldPreferFlats;
+    repaint();
+}
+
 void ProgressionStrip::setAnalysis(const harmonia::Analysis& analysis)
 {
     currentAnalysis = analysis;
@@ -54,7 +62,7 @@ void ProgressionStrip::paint(juce::Graphics& g)
         g.setColour(hovered ? accent : outline);
         g.drawRoundedRectangle(bounds, 5.0f, 1.0f);
 
-        const auto name = juce::String(segment.chord.name());
+        const auto name = juce::String(segment.chord.name(preferFlats));
         const auto numeral = juce::String(juce::CharPointer_UTF8(segment.chord.romanNumeral(currentAnalysis.key).c_str()));
 
         auto textArea = bounds.reduced(4.0f, 2.0f);

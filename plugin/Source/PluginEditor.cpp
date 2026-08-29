@@ -172,8 +172,12 @@ ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
                                 "fragmentation and passing notes");
     styleKnob.slider.setTooltip("How much of the material learned from your own MIDI collection to use");
 
+    buildKnob(reharmKnob, "Reharm", ParamID::reharmAmount);
+    reharmKnob.slider.setTooltip("How much of the progression the Reharmonise button rewrites");
+
     // ---- Side panel controls -------------------------------------------------
-    for (auto* label : { &lengthLabel, &arpLabel, &harmonyLabel, &levelLabel })
+    for (auto* label : { &lengthLabel, &arpLabel, &harmonyLabel, &levelLabel,
+                         &meterLabel, &accidentalLabel })
     {
         label->setFont(juce::FontOptions(11.0f, juce::Font::bold));
         label->setColour(juce::Label::textColourId, textDim);
@@ -191,13 +195,34 @@ ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
     harmonyAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         processor.apvts, ParamID::harmonicRhythm, harmonyBox);
 
+    meterBox.addItemList({ "From clip", "4/4", "3/4", "6/8", "5/4", "7/8" }, 1);
+    meterBox.setTooltip("Nothing guesses a meter - it is read from the clip you load, and is 4/4 "
+                        "when there is no clip. Set it here to disagree with the file.");
+    addAndMakeVisible(meterBox);
+    meterAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        processor.apvts, ParamID::meter, meterBox);
+
+    accidentalBox.addItemList({ "Key", "Sharps  #", "Flats  b" }, 1);
+    accidentalBox.setTooltip("How notes and chords are spelled. Key uses the accidentals the key "
+                             "itself calls for; the other two force sharps or flats everywhere. "
+                             "Either spelling can be typed in whichever this is set to.");
+    addAndMakeVisible(accidentalBox);
+    accidentalAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        processor.apvts, ParamID::accidentals, accidentalBox);
+
     arpBox.addItemList({ "Up", "Down", "Up-Down", "Down-Up", "Converge", "Random" }, 1);
     addAndMakeVisible(arpBox);
     arpAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         processor.apvts, ParamID::arpPattern, arpBox);
 
-    for (auto* toggle : { &followToggle, &avoidToggle, &syncToggle, &previewToggle })
+    for (auto* toggle : { &followToggle, &avoidToggle, &syncToggle, &previewToggle, &stackToggle })
         addAndMakeVisible(toggle);
+
+    stackToggle.setTooltip("Play every part you have generated together, each on its own MIDI "
+                           "channel, instead of only the one selected. The pad on channel 1, "
+                           "chords on 2, and so on - point a different instrument at each.");
+    stackAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        processor.apvts, ParamID::stackParts, stackToggle);
 
     followToggle.setTooltip("Borrow the onset pattern of the clip you loaded");
     avoidToggle.setTooltip("Keep the new part out of the register the clip already occupies");
@@ -234,7 +259,13 @@ ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
 
     keyRootBox.addItem("Auto", 1);
     for (int pitchClass = 0; pitchClass < 12; ++pitchClass)
-        keyRootBox.addItem(harmonia::pitchClassName(pitchClass), pitchClass + 2);
+    {
+        // Both spellings, always, so the list reads the same whichever way the
+        // switch is set and nobody has to hunt for Eb under D#.
+        const juce::String sharp(harmonia::pitchClassName(pitchClass, false));
+        const juce::String flat(harmonia::pitchClassName(pitchClass, true));
+        keyRootBox.addItem(sharp == flat ? sharp : sharp + " / " + flat, pitchClass + 2);
+    }
     keyRootBox.setTooltip("Pin the key instead of letting the detector pick it. "
                           "Roman numerals you type are read in this key.");
     keyRootBox.onChange = [this] { applyKeyFromControls(); };
@@ -245,8 +276,23 @@ ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
     keyModeBox.onChange = [this] { applyKeyFromControls(); };
     addAndMakeVisible(keyModeBox);
 
-    // ---- Written progressions ---------------------------------------------------
-    presetBox.setTextWhenNothingSelected("Style presets...");
+    // ---- The harmony block ------------------------------------------------------
+    // Typing a progression is the way this gets used most, so it leads: a wide
+    // field with its own label, and the preset list beside it as the offer it
+    // is rather than a step you have to go through.
+    harmonyHeading.setText("HARMONY", juce::dontSendNotification);
+    harmonyHeading.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+    harmonyHeading.setColour(juce::Label::textColourId, accent);
+    addAndMakeVisible(harmonyHeading);
+
+    for (auto* hint : { &progressionHint, &presetHint })
+    {
+        hint->setFont(juce::FontOptions(11.0f, juce::Font::bold));
+        hint->setColour(juce::Label::textColourId, textDim);
+        addAndMakeVisible(hint);
+    }
+
+    presetBox.setTextWhenNothingSelected("Style presets (optional)");
     presetBox.setTooltip("Drop in a ready-made progression, transposed to the current key.");
     {
         int itemId = 1;
@@ -304,9 +350,21 @@ ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
     diceButton.onClick = [this] { processor.rollNewSeed(); };
     addAndMakeVisible(diceButton);
 
-    reharmButton.setTooltip("Substitute chords in the detected progression");
-    reharmButton.onClick = [this] { processor.reharmonize(0.5f); };
+    reharmButton.setTooltip("Rewrite some of the chords into substitutions that still fit: the "
+                            "relative minor or major, a secondary dominant leading to the next "
+                            "chord, a tritone sub, a borrowed bVII or iv, a triad opened into a "
+                            "seventh. The Reharm knob decides how much of the progression changes. "
+                            "Undo puts it back.");
+    reharmButton.onClick = [this] { processor.reharmonize(processor.reharmonizeAmount()); };
     addAndMakeVisible(reharmButton);
+
+    undoButton.setTooltip("One step back: a knob, a chord you typed, a preset, a reharmonisation");
+    undoButton.onClick = [this] { processor.undo(); };
+    addAndMakeVisible(undoButton);
+
+    dropPartButton.setTooltip("Stop keeping this part. The others carry on playing.");
+    dropPartButton.onClick = [this] { processor.dropPart(processor.activePartIndex()); };
+    addAndMakeVisible(dropPartButton);
 
     resetChordsButton.setTooltip("Go back to the progression detected from the clip");
     resetChordsButton.onClick = [this] { processor.resetProgression(); };
@@ -366,13 +424,48 @@ void ProgressionsEditor::buildKnob(Knob& knob, const juce::String& name, const c
 
 // ---------------------------------------------------------------------------
 
+bool ProgressionsEditor::preferFlats() const
+{
+    const auto style = static_cast<harmonia::AccidentalStyle>(
+        juce::jlimit(0, 2, juce::roundToInt(processor.apvts.getRawParameterValue(ParamID::accidentals)->load())));
+    return harmonia::useFlatsFor(processor.getEngine().analysis().key, style);
+}
+
+void ProgressionsEditor::refreshPartButtons()
+{
+    for (int i = 0; i < partButtons.size(); ++i)
+    {
+        const bool live = processor.isPartLive(i);
+        auto text = kPartLabels[i];
+        if (live)
+        {
+            // The channel is the whole point of stacking: it is what a host
+            // needs to send this part to its own instrument.
+            text += "  " + juce::String(processor.channelForPart(i));
+            if (processor.isPartStale(i))
+                text += "*";
+        }
+        if (partButtons[i]->getButtonText() != text)
+            partButtons[i]->setButtonText(text);
+
+        partButtons[i]->setTooltip(live
+            ? "Written, playing on MIDI channel " + juce::String(processor.channelForPart(i))
+                  + (processor.isPartStale(i) ? " - written over a different pad than the one playing now"
+                                              : "")
+            : "Write a " + kPartLabels[i].toLowerCase() + " over the harmony");
+    }
+}
+
 void ProgressionsEditor::refresh()
 {
     const auto& analysis = processor.getEngine().analysis();
     const bool hasSource = processor.getEngine().hasSource();
 
+    pianoRoll.setPreferFlats(preferFlats());
+    progressionStrip.setPreferFlats(preferFlats());
     pianoRoll.setContent(processor.getEngine().source(), processor.getGeneratedSequence(), analysis);
     progressionStrip.setAnalysis(analysis);
+    refreshPartButtons();
 
     sourceLabel.setText(hasSource ? processor.getSourceName() : juce::String("no clip loaded"),
                         juce::dontSendNotification);
@@ -381,14 +474,14 @@ void ProgressionsEditor::refresh()
     std::vector<std::pair<juce::String, juce::String>> rows;
     if (hasSource && analysis.valid)
     {
-        rows.emplace_back("Key", juce::String(analysis.key.name()) + "  ("
+        rows.emplace_back("Key", juce::String(analysis.key.name(preferFlats())) + "  ("
                                      + juce::String(juce::roundToInt(analysis.keyConfidence * 100.0f)) + "%)");
         rows.emplace_back("Tempo", formatBpm(analysis.bpm) + "  " + juce::String(analysis.timeSignature.numerator)
                                        + "/" + juce::String(analysis.timeSignature.denominator));
         rows.emplace_back("Length", juce::String(analysis.bars) + " bars");
         rows.emplace_back("Clip reads as", juce::String(toString(analysis.role)));
-        rows.emplace_back("Register", juce::String(noteName(analysis.rhythm.lowestPitch)) + " - "
-                                          + juce::String(noteName(analysis.rhythm.highestPitch)));
+        rows.emplace_back("Register", juce::String(noteName(analysis.rhythm.lowestPitch, preferFlats())) + " - "
+                                          + juce::String(noteName(analysis.rhythm.highestPitch, preferFlats())));
         rows.emplace_back("Density", juce::String(analysis.rhythm.notesPerBar, 1) + " notes/bar");
         rows.emplace_back("Seed", juce::String(static_cast<juce::int64>(processor.getSeed())));
         rows.emplace_back("Generated", juce::String(static_cast<int>(processor.getGeneratedSequence().notes.size()))
@@ -464,6 +557,10 @@ void ProgressionsEditor::refresh()
     resetChordsButton.setEnabled(hasSource || processor.hasWrittenProgression());
     diceButton.setEnabled(hasSource || analysis.valid);
     reharmButton.setEnabled(analysis.valid);
+    reharmKnob.slider.setEnabled(analysis.valid);
+    reharmKnob.label.setEnabled(analysis.valid);
+    undoButton.setEnabled(processor.canUndo());
+    dropPartButton.setEnabled(processor.isPartLive(processor.activePartIndex()));
 }
 
 void ProgressionsEditor::applyTypedProgression()
@@ -737,7 +834,7 @@ void ProgressionsEditor::resized()
 
         auto knobRow = footer.removeFromTop(90);
         Knob* knobs[] = { &densityKnob, &complexityKnob, &craftKnob, &humanizeKnob,
-                          &swingKnob, &octaveKnob, &voicesKnob, &styleKnob };
+                          &swingKnob, &octaveKnob, &voicesKnob, &reharmKnob, &styleKnob };
         const int knobWidth = knobRow.getWidth() / static_cast<int>(std::size(knobs));
         for (auto* knob : knobs)
         {
@@ -751,8 +848,10 @@ void ProgressionsEditor::resized()
         auto actionRow = footer;
         dragArea.setBounds(actionRow.removeFromRight(190).reduced(2, 4));
         actionRow.removeFromRight(8);
-        const int actionWidth = juce::jmin(140, actionRow.getWidth() / 5);
-        for (auto* button : { &diceButton, &playButton, &reharmButton, &resetChordsButton, &exportButton })
+        juce::TextButton* actions[] = { &diceButton, &playButton, &undoButton, &reharmButton,
+                                        &resetChordsButton, &dropPartButton, &exportButton };
+        const int actionWidth = actionRow.getWidth() / static_cast<int>(std::size(actions));
+        for (auto* button : actions)
             button->setBounds(actionRow.removeFromLeft(actionWidth).reduced(3, 4));
     }
 
@@ -761,30 +860,20 @@ void ProgressionsEditor::resized()
     area.removeFromLeft(12);
     {
         // Everything below the read-out is fixed height; the read-out takes the rest.
-        constexpr int controlsHeight = 3 * (14 + 26) + 2 * 8 + 12 + 24 + 4 + 24
+        // Key, Length and the spelling switch live with the typed chords now,
+        // so what is left here is what shapes the part rather than the harmony.
+        constexpr int controlsHeight = 2 * (14 + 26) + 8 + 12 + 3 * (24 + 4)
                                      + 12 + 14 + 24 + 10 + 26 + 4 + 24;
         infoPanel.setBounds(side.removeFromTop(juce::jmax(150, side.getHeight() - controlsHeight - 10)));
         side.removeFromTop(10);
 
+        const int half = side.getWidth() / 2;
         auto labelRow = side.removeFromTop(14);
         auto comboRow = side.removeFromTop(26);
-        const int half = side.getWidth() / 2;
-        lengthLabel.setBounds(labelRow.removeFromLeft(half).reduced(2, 0));
-        harmonyLabel.setBounds(labelRow.reduced(2, 0));
-        lengthBox.setBounds(comboRow.removeFromLeft(half).reduced(2, 0));
-        harmonyBox.setBounds(comboRow.reduced(2, 0));
-
-        side.removeFromTop(8);
-        labelRow = side.removeFromTop(14);
-        comboRow = side.removeFromTop(26);
-        keyRootLabel.setBounds(labelRow.removeFromLeft(half).reduced(2, 0));
-        keyModeLabel.setBounds(labelRow.reduced(2, 0));
-        keyRootBox.setBounds(comboRow.removeFromLeft(half).reduced(2, 0));
-        keyModeBox.setBounds(comboRow.reduced(2, 0));
-
-        side.removeFromTop(8);
-        arpLabel.setBounds(side.removeFromTop(14).removeFromLeft(half).reduced(2, 0));
-        arpBox.setBounds(side.removeFromTop(26).removeFromLeft(half).reduced(2, 0));
+        harmonyLabel.setBounds(labelRow.removeFromLeft(half).reduced(2, 0));
+        arpLabel.setBounds(labelRow.reduced(2, 0));
+        harmonyBox.setBounds(comboRow.removeFromLeft(half).reduced(2, 0));
+        arpBox.setBounds(comboRow.reduced(2, 0));
 
         side.removeFromTop(12);
         auto toggleRow = side.removeFromTop(24);
@@ -795,6 +884,9 @@ void ProgressionsEditor::resized()
         toggleRow = side.removeFromTop(24);
         avoidToggle.setBounds(toggleRow.removeFromLeft(half).reduced(2, 0));
         previewToggle.setBounds(toggleRow.reduced(2, 0));
+
+        side.removeFromTop(4);
+        stackToggle.setBounds(side.removeFromTop(24).reduced(2, 0));
 
         side.removeFromTop(12);
         levelLabel.setBounds(side.removeFromTop(14));
@@ -809,14 +901,54 @@ void ProgressionsEditor::resized()
     // ---- Main view -----------------------------------------------------------
     progressionStrip.setBounds(area.removeFromBottom(54));
     area.removeFromBottom(6);
+
+    // ---- Harmony block --------------------------------------------------------
+    // One place for everything that decides the chords: what you type, what key
+    // they are read in, how long the loop is, how they are spelled.
     {
-        auto typeRow = area.removeFromBottom(28);
-        presetBox.setBounds(typeRow.removeFromLeft(230).reduced(0, 1));
-        typeRow.removeFromLeft(8);
-        applyProgressionButton.setBounds(typeRow.removeFromRight(56).reduced(0, 1));
-        typeRow.removeFromRight(6);
-        progressionField.setBounds(typeRow.reduced(0, 1));
+        // 14 heading + 4 + 14 labels + 28 field + 8 + 14 labels + 26 boxes.
+        auto block = area.removeFromBottom(108);
+
+        auto settingsRow = block.removeFromBottom(26);
+        auto settingsLabels = block.removeFromBottom(14);
+        block.removeFromBottom(8);
+
+        // Key, Mode, Length, Time, Spelling - five cells across the block.
+        const int cell = settingsRow.getWidth() / 5;
+        juce::Label* settingLabels[] = { &keyRootLabel, &keyModeLabel, &lengthLabel,
+                                         &meterLabel, &accidentalLabel };
+        juce::ComboBox* settingBoxes[] = { &keyRootBox, &keyModeBox, &lengthBox,
+                                           &meterBox, &accidentalBox };
+        for (int i = 0; i < 5; ++i)
+        {
+            const bool last = i == 4;
+            auto labelCell = last ? settingsLabels : settingsLabels.removeFromLeft(cell);
+            auto boxCell = last ? settingsRow : settingsRow.removeFromLeft(cell);
+            settingLabels[i]->setBounds(labelCell.reduced(2, 0));
+            settingBoxes[i]->setBounds(boxCell.reduced(2, 0));
+        }
+
+        auto typeRow = block.removeFromBottom(28);
+        auto typeLabels = block.removeFromBottom(14);
+        block.removeFromBottom(4);
+        harmonyHeading.setBounds(block.removeFromBottom(14).reduced(2, 0));
+
+        // The typed field leads and the presets sit beside it - the proportions
+        // say which one is the main way in.
+        auto presetCell = typeRow.removeFromRight(220);
+        auto presetLabelCell = typeLabels.removeFromRight(220);
+        typeRow.removeFromRight(10);
+        typeLabels.removeFromRight(10);
+
+        presetHint.setBounds(presetLabelCell.reduced(2, 0));
+        presetBox.setBounds(presetCell.reduced(2, 1));
+
+        progressionHint.setBounds(typeLabels.reduced(2, 0));
+        applyProgressionButton.setBounds(typeRow.removeFromRight(56).reduced(2, 1));
+        typeRow.removeFromRight(4);
+        progressionField.setBounds(typeRow.reduced(2, 1));
     }
+
     area.removeFromBottom(8);
     pianoRoll.setBounds(area);
 }

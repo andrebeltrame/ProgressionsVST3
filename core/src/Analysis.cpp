@@ -421,7 +421,8 @@ Analysis analyze(const NoteSequence& sequence, const AnalysisOptions& options)
 {
     Analysis result;
     result.ppq = sequence.ppq;
-    result.timeSignature = sequence.timeSignatureAt(0);
+    result.timeSignature = options.forceTimeSignature ? options.timeSignature
+                                                      : sequence.timeSignatureAt(0);
     result.bpm = sequence.bpm();
 
     if (sequence.notes.empty())

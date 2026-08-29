@@ -30,7 +30,14 @@ constexpr const char* midiChannel = "midiChannel";
 constexpr const char* harmonicRhythm = "harmonicRhythm";
 constexpr const char* useStyle = "useStyle";
 constexpr const char* styleAmount = "styleAmount";
+constexpr const char* stackParts = "stackParts";
+constexpr const char* accidentals = "accidentals";
+constexpr const char* meter = "meter";
+constexpr const char* reharmAmount = "reharmAmount";
 } // namespace ParamID
+
+/** Every part the plugin can write, in the order the tabs show them. */
+static constexpr int kNumParts = 7;
 
 /** The plugin: holds the analysis engine, renders the generated part and plays
     it back through MIDI out and a built-in preview voice. */
@@ -74,6 +81,26 @@ public:
     void clearSource();
 
     void regenerate();
+
+    /** How many parts are being kept, and which. A part becomes live when it is
+        generated and stays live until it is dropped, so the pad you settled on
+        keeps playing while you work on the bassline over it. */
+    bool isPartLive(int partIndex) const;
+    void dropPart(int partIndex);
+    void dropAllParts();
+    /** True when this part was written against a different pad than the one
+        playing now - the user asked to be told, not to have it regenerated. */
+    bool isPartStale(int partIndex) const;
+    /** 1..16. Each part gets its own channel so a host can send each one to a
+        different instrument. */
+    int channelForPart(int partIndex) const;
+    const harmonia::NoteSequence& partSequence(int partIndex) const;
+    int activePartIndex() const;
+
+    /** One step back for anything on screen: a knob, the typed progression, a
+        preset, a reharmonisation. Returns false when there is nothing to undo. */
+    bool undo();
+    bool canUndo() const noexcept { return ! undoStack.empty(); }
     /** Back to a fresh instance: every parameter at its default, no clip, no
         typed progression, a new seed. The learned library is left alone - it
         belongs to the installation, not to this patch, and rebuilding it costs
@@ -84,6 +111,8 @@ public:
     void setSeed(juce::uint32 newSeed);
 
     void reharmonize(float amount);
+    /** The reharmonisation strength the UI is set to. */
+    float reharmonizeAmount() const;
     void resetProgression();
     void nudgeChord(int index, int direction);
 
@@ -177,6 +206,13 @@ private:
     void timerCallback() override;
 
     harmonia::GenerateOptions currentOptions() const;
+    harmonia::GenerateOptions optionsForPart(int partIndex) const;
+    /** Rebuilds the sounding mix from whichever parts are live. */
+    void republishParts();
+    void pushUndoState(bool discrete);
+    void captureSettledState();
+    juce::ValueTree stateTree();
+    void applyStateTree(const juce::ValueTree& tree);
     void applyAnalysisOptions();
     void publish(RenderedPart::Ptr part);
     void renderEvents(juce::MidiBuffer& midi, int numSamples, double bpm, double startPPQ);
@@ -191,6 +227,17 @@ private:
     std::unique_ptr<LibraryScan> scan;
     juce::String scanSummary;
     harmonia::NoteSequence generated;
+    std::array<harmonia::NoteSequence, kNumParts> partSequences;
+    std::array<bool, kNumParts> partLive { };
+    /** The seed the pad had when each part was written, so the UI can say which
+        parts no longer belong to the pad that is playing. */
+    std::array<juce::uint32, kNumParts> partPadStamp { };
+    juce::uint32 padStamp = 0;
+
+    std::vector<juce::MemoryBlock> undoStack;
+    juce::MemoryBlock settledState;
+    juce::uint32 lastUndoPushMs = 0;
+    bool restoringState = false;
     juce::String sourceName;
     juce::String lastError;
     juce::MemoryBlock sourceMidiData;

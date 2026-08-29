@@ -54,6 +54,14 @@ void PianoRollComponent::setContent(const NoteSequence& source,
     repaint();
 }
 
+void PianoRollComponent::setPreferFlats(bool shouldPreferFlats)
+{
+    if (preferFlats == shouldPreferFlats)
+        return;
+    preferFlats = shouldPreferFlats;
+    repaint();
+}
+
 void PianoRollComponent::setPlayPosition(double normalised)
 {
     if (std::abs(normalised - playPosition) < 0.001)
@@ -198,7 +206,7 @@ void PianoRollComponent::paint(juce::Graphics& g)
         {
             g.setColour(background.withAlpha(0.85f));
             g.setFont(juce::FontOptions(juce::jmin(11.0f, rect.getHeight() - 1.0f)));
-            g.drawText(juce::String(noteName(note.pitch)), rect.reduced(3.0f, 0.0f),
+            g.drawText(juce::String(noteName(note.pitch, preferFlats)), rect.reduced(3.0f, 0.0f),
                        juce::Justification::centredLeft, false);
         }
     }
@@ -212,7 +220,7 @@ void PianoRollComponent::paint(juce::Graphics& g)
         g.fillRect(inner.getX(), inner.getY() + rowHeight * static_cast<float>(highestPitch - hoveredPitch),
                    inner.getWidth(), rowHeight);
 
-        const juce::String label(noteName(hoveredPitch));
+        const juce::String label(noteName(hoveredPitch, preferFlats));
         g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
         const float width = juce::jmax(38.0f, juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), label) + 14.0f);
         auto tag = juce::Rectangle<float>(inner.getX() + 4.0f, inner.getY() + 4.0f, width, 20.0f);

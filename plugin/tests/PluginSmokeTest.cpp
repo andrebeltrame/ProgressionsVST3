@@ -153,6 +153,57 @@ int main(int argc, char** argv)
     check(processor.getEngine().analysis().progression.size() >= 2, "reharmonisation keeps the grid");
     processor.resetProgression();
 
+    // ---- Parts stack, each on its own channel -----------------------------------
+    {
+        const auto selectPart = [&processor](int index)
+        {
+            auto* parameter = processor.apvts.getParameter(ParamID::part);
+            parameter->setValueNotifyingHost(parameter->convertTo0to1(static_cast<float>(index)));
+            processor.regenerate();
+        };
+
+        selectPart(0); // Pad
+        check(processor.isPartLive(0), "generating a part keeps it");
+        const auto padNotes = processor.partSequence(0).notes.size();
+
+        selectPart(4); // Bass
+        check(processor.isPartLive(4), "the bass is kept too");
+        check(processor.isPartLive(0), "and the pad is still there");
+        check(processor.partSequence(0).notes.size() == padNotes, "untouched by writing the bass");
+        check(processor.channelForPart(0) != processor.channelForPart(4),
+              "each part gets its own MIDI channel");
+
+        // Regenerating the pad unchanged is still the same pad.
+        selectPart(0);
+        check(! processor.isPartStale(4), "an identical pad leaves the other parts alone");
+
+        // A different pad does not: the bass belongs to one that is gone.
+        processor.rollNewSeed();
+        check(processor.isPartStale(4), "a new pad marks the parts written over the old one");
+        check(! processor.isPartStale(0), "the pad is never stale against itself");
+
+        processor.dropPart(4);
+        check(! processor.isPartLive(4), "a part can be dropped");
+        check(processor.isPartLive(0), "without taking the others with it");
+    }
+
+    // ---- Undo --------------------------------------------------------------------
+    {
+        auto* density = processor.apvts.getParameter(ParamID::density);
+        const float before = density->getValue();
+        density->setValueNotifyingHost(before > 0.5f ? 0.1f : 0.9f);
+        processor.regenerate();
+
+        check(processor.canUndo(), "a change leaves something to undo");
+        check(processor.undo(), "undo runs");
+        check(std::abs(density->getValue() - before) < 0.001f, "and puts the knob back");
+
+        check(processor.setProgressionText("Fm | Db | Ab | Eb"), "a progression to undo");
+        check(processor.hasWrittenProgression(), "which took effect");
+        check(processor.undo(), "undo runs again");
+        check(! processor.hasWrittenProgression(), "and takes the typed chords away");
+    }
+
     // ---- Written progressions --------------------------------------------------
     check(processor.setProgressionText("Dm7 | G7 | Cmaj7 | Cmaj7"), "a typed progression is accepted");
     check(processor.hasWrittenProgression(), "the engine knows the chords were written");
@@ -372,6 +423,22 @@ int main(int argc, char** argv)
                               .getChildFile("harmonia_smoke_export.mid");
     check(processor.exportGenerated(exported), "export writes a MIDI file");
     check(exported.getSize() > 20, "the exported file has content");
+    {
+        // A host sizes an imported clip by the end of the file, so it has to be
+        // a whole number of bars however the last note happens to fall.
+        juce::MemoryBlock block;
+        check(exported.loadFileAsData(block), "the exported file reads back");
+        std::string error;
+        harmonia::NoteSequence readBack;
+        check(harmonia::midi::readFromMemory(static_cast<const juce::uint8*>(block.getData()),
+                                             block.getSize(), readBack, error),
+              "and parses as a MIDI file");
+        check(readBack.loopLengthTicks > 0, "the file declares its length");
+        check(readBack.loopLengthTicks % readBack.ticksPerBar() == 0,
+              "and that length is a whole number of bars");
+        for (const auto& note : readBack.notes)
+            check(note.endTick() <= readBack.loopLengthTicks, "nothing rings past the loop");
+    }
     exported.deleteFile();
 
     // ---- Editor ---------------------------------------------------------------

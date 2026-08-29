@@ -13,6 +13,8 @@ public:
     ProgressionStrip();
 
     void setAnalysis(const harmonia::Analysis& analysis);
+    /** Which spelling to name chords with - the b/# switch. */
+    void setPreferFlats(bool shouldPreferFlats);
     std::function<void(int index, int direction)> onChordNudged;
 
     void paint(juce::Graphics&) override;
@@ -26,4 +28,5 @@ private:
 
     harmonia::Analysis currentAnalysis;
     int hoveredIndex = -1;
+    bool preferFlats = false;
 };

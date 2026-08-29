@@ -15,6 +15,21 @@ const juce::StringArray kPartNames { "Pad", "Chords", "Melody", "Counter Melody"
 const juce::StringArray kBarChoices { "As source", "1", "2", "4", "8", "16" };
 const juce::StringArray kArpChoices { "Up", "Down", "Up-Down", "Down-Up", "Converge", "Random" };
 const juce::StringArray kHarmonyChoices { "Auto", "1 per bar", "2 per bar", "1 per beat" };
+const juce::StringArray kAccidentalChoices { "Key", "Sharps", "Flats" };
+const juce::StringArray kMeterChoices { "From clip", "4/4", "3/4", "6/8", "5/4", "7/8" };
+
+/** The time signature behind each entry of kMeterChoices; index 0 is unused. */
+harmonia::TimeSignature meterForChoice(int choice)
+{
+    switch (choice)
+    {
+        case 2:  return { 3, 4, 0 };
+        case 3:  return { 6, 8, 0 };
+        case 4:  return { 5, 4, 0 };
+        case 5:  return { 7, 8, 0 };
+        default: return { 4, 4, 0 };
+    }
+}
 
 /** How many chords the detector is allowed to find per bar. 0 lets it decide. */
 int chordsPerBarForChoice(int index)
@@ -95,6 +110,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout ProgressionsProcessor::creat
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { ParamID::useStyle, 1 }, "Use My Style", true));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { ParamID::styleAmount, 1 }, "Style Amount",
                                                      NormalisableRange<float> { 0.0f, 1.0f }, 1.0f, percentAttributes));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { ParamID::stackParts, 1 }, "Stack Parts", true));
+    layout.add(std::make_unique<AudioParameterChoice>(ParameterID { ParamID::accidentals, 1 }, "Accidentals",
+                                                      kAccidentalChoices, 0));
+    layout.add(std::make_unique<AudioParameterChoice>(ParameterID { ParamID::meter, 1 }, "Time Signature",
+                                                      kMeterChoices, 0));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { ParamID::reharmAmount, 1 }, "Reharmonise Amount",
+                                                     NormalisableRange<float> { 0.0f, 1.0f }, 0.5f, percentAttributes));
 
     return layout;
 }
@@ -106,7 +128,8 @@ ProgressionsProcessor::ProgressionsProcessor()
     for (const char* id : { ParamID::part, ParamID::density, ParamID::complexity, ParamID::humanize,
                             ParamID::swing, ParamID::develop, ParamID::octave, ParamID::voices, ParamID::bars,
                             ParamID::follow, ParamID::avoid, ParamID::arpPattern,
-                            ParamID::harmonicRhythm, ParamID::useStyle, ParamID::styleAmount })
+                            ParamID::harmonicRhythm, ParamID::useStyle, ParamID::styleAmount,
+                            ParamID::stackParts, ParamID::accidentals, ParamID::meter })
         apvts.addParameterListener(id, this);
 
     previewSynth.addSound(new PreviewSound());
@@ -116,6 +139,10 @@ ProgressionsProcessor::ProgressionsProcessor()
     seed = static_cast<juce::uint32>(juce::Random::getSystemRandom().nextInt(1000000) + 1);
 
     loadDefaultStyleModel();
+
+    // The first change has to be undoable too, so there is a state to go back
+    // to before anything has happened.
+    captureSettledState();
 }
 
 ProgressionsProcessor::~ProgressionsProcessor()
@@ -153,8 +180,11 @@ bool ProgressionsProcessor::isBusesLayoutSupported(const BusesLayout& layouts) c
 
 void ProgressionsProcessor::panic(juce::MidiBuffer& midi)
 {
-    const int channel = apvts.getRawParameterValue(ParamID::midiChannel)->load();
-    midi.addEvent(juce::MidiMessage::allNotesOff(juce::jlimit(1, 16, channel)), 0);
+    // Parts sit on a channel each now, and the part being replaced is not
+    // necessarily the one that was sounding, so silence all sixteen. Sixteen
+    // controller messages once per part change costs nothing.
+    for (int channel = 1; channel <= 16; ++channel)
+        midi.addEvent(juce::MidiMessage::allNotesOff(channel), 0);
     previewSynth.allNotesOff(0, true);
 }
 
@@ -171,7 +201,6 @@ void ProgressionsProcessor::renderEvents(juce::MidiBuffer& midi, int numSamples,
     if (part == nullptr || part->events.empty() || part->lengthPPQ <= 0.0)
         return;
 
-    const int channel = juce::jlimit(1, 16, static_cast<int>(apvts.getRawParameterValue(ParamID::midiChannel)->load()));
     const double ppqPerSample = bpm / 60.0 / currentSampleRate;
     if (ppqPerSample <= 0.0)
         return;
@@ -197,6 +226,7 @@ void ProgressionsProcessor::renderEvents(juce::MidiBuffer& midi, int numSamples,
 
             const auto offset = juce::jlimit(0, numSamples - 1,
                                              static_cast<int>((consumed + event.ppq - cursor) / ppqPerSample));
+            const int channel = juce::jlimit(1, 16, event.channel);
             const auto message = event.noteOn
                                      ? juce::MidiMessage::noteOn(channel, event.pitch,
                                                                  static_cast<juce::uint8>(event.velocity))
@@ -292,11 +322,129 @@ void ProgressionsProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
 
 // ---------------------------------------------------------------------------
 
+namespace
+{
+/** A cheap content hash of a part, used to tell whether the pad under the other
+    parts is still the one they were written over. */
+juce::uint32 fingerprint(const harmonia::NoteSequence& sequence)
+{
+    juce::uint32 hash = 2166136261u;
+    const auto mix = [&hash](juce::uint32 value)
+    {
+        hash = (hash ^ value) * 16777619u;
+    };
+
+    for (const auto& note : sequence.notes)
+    {
+        mix(static_cast<juce::uint32>(note.startTick));
+        mix(static_cast<juce::uint32>(note.lengthTick));
+        mix(static_cast<juce::uint32>(note.pitch));
+        mix(static_cast<juce::uint32>(note.velocity));
+    }
+    return hash == 0 ? 1u : hash;
+}
+} // namespace
+
+int ProgressionsProcessor::activePartIndex() const
+{
+    return juce::jlimit(0, kNumParts - 1,
+                        static_cast<int>(apvts.getRawParameterValue(ParamID::part)->load()));
+}
+
+bool ProgressionsProcessor::isPartLive(int partIndex) const
+{
+    return partIndex >= 0 && partIndex < kNumParts && partLive[static_cast<size_t>(partIndex)];
+}
+
+bool ProgressionsProcessor::isPartStale(int partIndex) const
+{
+    if (! isPartLive(partIndex) || partIndex == 0)
+        return false;
+    // Only meaningful while there is a pad to be out of step with.
+    return partLive[0] && partPadStamp[static_cast<size_t>(partIndex)] != padStamp;
+}
+
+int ProgressionsProcessor::channelForPart(int partIndex) const
+{
+    const int base = juce::jlimit(1, 16, static_cast<int>(apvts.getRawParameterValue(ParamID::midiChannel)->load()));
+    return ((base - 1 + juce::jlimit(0, kNumParts - 1, partIndex)) % 16) + 1;
+}
+
+const harmonia::NoteSequence& ProgressionsProcessor::partSequence(int partIndex) const
+{
+    return partSequences[static_cast<size_t>(juce::jlimit(0, kNumParts - 1, partIndex))];
+}
+
+void ProgressionsProcessor::dropPart(int partIndex)
+{
+    if (partIndex < 0 || partIndex >= kNumParts)
+        return;
+    pushUndoState(true);
+    partLive[static_cast<size_t>(partIndex)] = false;
+    partSequences[static_cast<size_t>(partIndex)] = harmonia::NoteSequence {};
+    if (partIndex == activePartIndex())
+        generated = harmonia::NoteSequence {};
+    republishParts();
+    captureSettledState();
+    sendChangeMessage();
+}
+
+void ProgressionsProcessor::dropAllParts()
+{
+    partLive.fill(false);
+    for (auto& sequence : partSequences)
+        sequence = harmonia::NoteSequence {};
+    generated = harmonia::NoteSequence {};
+}
+
+harmonia::GenerateOptions ProgressionsProcessor::optionsForPart(int partIndex) const
+{
+    auto options = currentOptions();
+    options.part = static_cast<PartType>(juce::jlimit(0, kNumParts - 1, partIndex));
+    options.channel = 0;
+
+    // The pad is what everything else is written around. It never anchors to
+    // itself, and there is nothing to anchor to until one has been generated.
+    if (partIndex != 0 && partLive[0] && ! partSequences[0].empty())
+        options.anchor = &partSequences[0];
+
+    return options;
+}
+
+void ProgressionsProcessor::republishParts()
+{
+    const bool stack = apvts.getRawParameterValue(ParamID::stackParts)->load() > 0.5f;
+    const int active = activePartIndex();
+
+    RenderedPart::Ptr mix = new RenderedPart();
+    mix->lengthPPQ = 0.0;
+    bool any = false;
+
+    for (int part = 0; part < kNumParts; ++part)
+    {
+        if (! partLive[static_cast<size_t>(part)] || partSequences[static_cast<size_t>(part)].empty())
+            continue;
+        if (! stack && part != active)
+            continue;
+
+        mix->add(partSequences[static_cast<size_t>(part)], channelForPart(part));
+        any = true;
+    }
+
+    if (! any)
+    {
+        publish(nullptr);
+        return;
+    }
+
+    mix->sortEvents();
+    publish(mix);
+}
+
 harmonia::GenerateOptions ProgressionsProcessor::currentOptions() const
 {
     GenerateOptions options;
-    options.part = static_cast<PartType>(juce::jlimit(0, kPartNames.size() - 1,
-                                                      static_cast<int>(apvts.getRawParameterValue(ParamID::part)->load())));
+    options.part = static_cast<PartType>(activePartIndex());
     options.seed = seed;
     options.density = apvts.getRawParameterValue(ParamID::density)->load();
     options.complexity = apvts.getRawParameterValue(ParamID::complexity)->load();
@@ -335,14 +483,24 @@ void ProgressionsProcessor::applyAnalysisOptions()
 {
     const int wanted = chordsPerBarForChoice(
         static_cast<int>(apvts.getRawParameterValue(ParamID::harmonicRhythm)->load()));
+    const int meterChoice = juce::jlimit(0, kMeterChoices.size() - 1,
+                                         static_cast<int>(apvts.getRawParameterValue(ParamID::meter)->load()));
+    const bool forceMeter = meterChoice > 0;
+    const auto meter = meterForChoice(meterChoice);
 
-    if (wanted == engine.analysisOptions().chordsPerBar)
+    auto options = engine.analysisOptions();
+    const bool meterChanged = options.forceTimeSignature != forceMeter
+                           || (forceMeter && (options.timeSignature.numerator != meter.numerator
+                                              || options.timeSignature.denominator != meter.denominator));
+
+    if (wanted == options.chordsPerBar && ! meterChanged)
         return;
 
     // Re-running the analysis drops any hand-edited or reharmonised chords,
     // which is what you would expect from changing the harmonic grid.
-    auto options = engine.analysisOptions();
     options.chordsPerBar = wanted;
+    options.forceTimeSignature = forceMeter;
+    options.timeSignature = meter;
     engine.setAnalysisOptions(options);
 }
 
@@ -350,22 +508,42 @@ void ProgressionsProcessor::regenerate()
 {
     applyAnalysisOptions();
 
-    // With no clip to take a tempo from, follow the host.
+    // With no clip to take a tempo from, follow the host - and the meter the
+    // user asked for, since there is no file to read one from.
     if (! engine.hasSource())
-        engine.setBlankCanvas(hostBpm.load(), 1);
+    {
+        const int meterChoice = juce::jlimit(0, kMeterChoices.size() - 1,
+                                             static_cast<int>(apvts.getRawParameterValue(ParamID::meter)->load()));
+        engine.setBlankCanvas(hostBpm.load(), 1, meterForChoice(meterChoice));
+    }
 
     // A written progression is enough on its own - no clip required.
     if (! engine.analysis().valid)
     {
-        generated = NoteSequence {};
+        dropAllParts();
         publish(nullptr);
         sendChangeMessage();
         return;
     }
 
-    generated = engine.generate(currentOptions());
+    const int active = activePartIndex();
+    generated = engine.generate(optionsForPart(active));
+    partSequences[static_cast<size_t>(active)] = generated;
+    partLive[static_cast<size_t>(active)] = ! generated.empty();
+
+    // A regenerated pad is a different pad: the parts written over the old one
+    // are now out of step. They are left exactly as they are - losing a melody
+    // you had just got right because you nudged a chord would be worse - and
+    // simply marked, so the change is visible instead of only audible.
+    // Stamped from the notes rather than the seed: turning a knob rewrites the
+    // pad without touching the seed, and that counts just as much.
+    if (active == 0)
+        padStamp = fingerprint(partSequences[0]);
+    partPadStamp[static_cast<size_t>(active)] = padStamp;
+
     clipBpm.store(juce::jlimit(20.0, 300.0, engine.analysis().bpm));
-    publish(RenderedPart::fromSequence(generated, 1));
+    republishParts();
+    captureSettledState();
     sendChangeMessage();
 }
 
@@ -376,12 +554,14 @@ void ProgressionsProcessor::parameterChanged(const juce::String&, float)
 
 void ProgressionsProcessor::handleAsyncUpdate()
 {
+    pushUndoState(false);
     regenerate();
 }
 
 void ProgressionsProcessor::initialise()
 {
     cancelLibraryScan();
+    pushUndoState(true);
 
     for (auto* parameter : getParameters())
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
@@ -397,7 +577,9 @@ void ProgressionsProcessor::initialise()
     keyTonic = 9;
     keyScale = harmonia::ScaleType::NaturalMinor;
 
-    generated = harmonia::NoteSequence {};
+    dropAllParts();
+    padStamp = 0;
+    partPadStamp.fill(0);
     sourceName.clear();
     sourceMidiData.reset();
     lastError.clear();
@@ -411,6 +593,7 @@ void ProgressionsProcessor::initialise()
 
 void ProgressionsProcessor::rollNewSeed()
 {
+    pushUndoState(true);
     setSeed(static_cast<juce::uint32>(juce::Random::getSystemRandom().nextInt(1000000) + 1));
 }
 
@@ -422,18 +605,21 @@ void ProgressionsProcessor::setSeed(juce::uint32 newSeed)
 
 void ProgressionsProcessor::reharmonize(float amount)
 {
+    pushUndoState(true);
     engine.applyReharmonization(seed * 2654435761u + 17u, amount);
     regenerate();
 }
 
 void ProgressionsProcessor::resetProgression()
 {
+    pushUndoState(true);
     engine.resetProgression();
     regenerate();
 }
 
 bool ProgressionsProcessor::setProgressionText(const juce::String& text)
 {
+    pushUndoState(true);
     std::string error;
     if (! engine.setProgressionText(text.toStdString(), error))
     {
@@ -449,6 +635,7 @@ bool ProgressionsProcessor::setProgressionText(const juce::String& text)
 
 bool ProgressionsProcessor::applyPreset(const juce::String& presetId)
 {
+    pushUndoState(true);
     std::string error;
     if (! engine.applyPreset(presetId.toStdString(), error))
     {
@@ -709,6 +896,7 @@ void ProgressionsProcessor::setForcedKey(bool forced, int tonic, harmonia::Scale
 
 void ProgressionsProcessor::nudgeChord(int index, int direction)
 {
+    pushUndoState(true);
     const auto& progression = engine.analysis().progression;
     if (! juce::isPositiveAndBelow(index, static_cast<int>(progression.size())))
         return;
@@ -732,6 +920,7 @@ void ProgressionsProcessor::nudgeChord(int index, int direction)
 
 bool ProgressionsProcessor::loadMidiFile(const juce::File& file)
 {
+    pushUndoState(true);
     juce::MemoryBlock block;
     if (! file.loadFileAsData(block))
     {
@@ -744,6 +933,7 @@ bool ProgressionsProcessor::loadMidiFile(const juce::File& file)
 
 bool ProgressionsProcessor::loadMidiFromData(const void* data, size_t size, const juce::String& displayName)
 {
+    pushUndoState(true);
     std::string error;
     if (! engine.loadSourceFromMemory(static_cast<const juce::uint8*>(data), size, error))
     {
@@ -761,6 +951,7 @@ bool ProgressionsProcessor::loadMidiFromData(const void* data, size_t size, cons
 
 void ProgressionsProcessor::clearSource()
 {
+    pushUndoState(true);
     engine.clear();
     generated = NoteSequence {};
     sourceName.clear();
@@ -816,7 +1007,7 @@ double ProgressionsProcessor::getPlayPositionNormalised() const
 
 // ---------------------------------------------------------------------------
 
-void ProgressionsProcessor::getStateInformation(juce::MemoryBlock& destData)
+juce::ValueTree ProgressionsProcessor::stateTree()
 {
     auto state = apvts.copyState();
     state.setProperty("seed", static_cast<juce::int64>(seed), nullptr);
@@ -833,8 +1024,12 @@ void ProgressionsProcessor::getStateInformation(juce::MemoryBlock& destData)
         state.setProperty("progression", juce::String(engine.progressionText()), nullptr);
     if (sourceMidiData.getSize() > 0)
         state.setProperty("sourceMidi", sourceMidiData.toBase64Encoding(), nullptr);
+    return state;
+}
 
-    if (auto xml = state.createXml())
+void ProgressionsProcessor::getStateInformation(juce::MemoryBlock& destData)
+{
+    if (auto xml = stateTree().createXml())
         copyXmlToBinary(*xml, destData);
 }
 
@@ -847,6 +1042,16 @@ void ProgressionsProcessor::setStateInformation(const void* data, int sizeInByte
     auto state = juce::ValueTree::fromXml(*xml);
     if (! state.isValid())
         return;
+
+    applyStateTree(state);
+    undoStack.clear();
+    captureSettledState();
+}
+
+void ProgressionsProcessor::applyStateTree(const juce::ValueTree& source)
+{
+    auto state = source.createCopy();
+    const juce::ScopedValueSetter<bool> guard(restoringState, true);
 
     seed = static_cast<juce::uint32>(static_cast<juce::int64>(state.getProperty("seed", 1)));
     sourceName = state.getProperty("sourceName", "").toString();
@@ -889,11 +1094,77 @@ void ProgressionsProcessor::setStateInformation(const void* data, int sizeInByte
         std::string error;
         engine.setProgressionText(progression.toStdString(), error);
     }
+    else
+    {
+        // Undoing back past a typed progression has to take it away again.
+        engine.resetProgression();
+    }
 
     state.removeProperty("sourceMidi", nullptr);
     state.removeProperty("progression", nullptr);
     apvts.replaceState(state);
+    dropAllParts();
     regenerate();
+}
+
+// --- Undo -------------------------------------------------------------------
+// One step back for anything on screen. Parameter changes arrive one at a time
+// while a knob is being dragged, so a snapshot is only taken when the last one
+// has had a moment to settle - otherwise a single turn of Density would fill
+// the stack. A discrete action (a preset, a typed progression, a new idea)
+// always gets its own step.
+
+void ProgressionsProcessor::captureSettledState()
+{
+    if (auto xml = stateTree().createXml())
+    {
+        settledState.reset();
+        copyXmlToBinary(*xml, settledState);
+    }
+}
+
+void ProgressionsProcessor::pushUndoState(bool discrete)
+{
+    if (restoringState || settledState.getSize() == 0)
+        return;
+
+    const auto now = juce::Time::getMillisecondCounter();
+    if (! discrete && now - lastUndoPushMs < 500)
+        return;
+    lastUndoPushMs = now;
+
+    if (! undoStack.empty() && undoStack.back() == settledState)
+        return;
+
+    undoStack.push_back(settledState);
+    constexpr size_t kMaxUndoSteps = 32;
+    if (undoStack.size() > kMaxUndoSteps)
+        undoStack.erase(undoStack.begin());
+}
+
+bool ProgressionsProcessor::undo()
+{
+    if (undoStack.empty())
+        return false;
+
+    const auto previous = undoStack.back();
+    undoStack.pop_back();
+
+    if (auto xml = getXmlFromBinary(previous.getData(), static_cast<int>(previous.getSize())))
+    {
+        auto state = juce::ValueTree::fromXml(*xml);
+        if (state.isValid())
+            applyStateTree(state);
+    }
+
+    settledState = previous;
+    sendChangeMessage();
+    return true;
+}
+
+float ProgressionsProcessor::reharmonizeAmount() const
+{
+    return apvts.getRawParameterValue(ParamID::reharmAmount)->load();
 }
 
 juce::AudioProcessorEditor* ProgressionsProcessor::createEditor()

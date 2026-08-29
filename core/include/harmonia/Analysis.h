@@ -91,6 +91,11 @@ struct AnalysisOptions
     Key key;
     /** Allow seventh chords in the detected progression. */
     bool allowSevenths = true;
+    /** Override the clip's own time signature. Nothing detects a meter - it is
+        read straight from the file - so this is the only way to disagree with a
+        clip that declares something other than what it is playing. */
+    bool forceTimeSignature = false;
+    TimeSignature timeSignature;
 };
 
 Analysis analyze(const NoteSequence& sequence, const AnalysisOptions& options = {});

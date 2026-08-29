@@ -16,6 +16,8 @@ public:
                     const harmonia::NoteSequence& generated,
                     const harmonia::Analysis& analysis);
     void setPlayPosition(double normalised);
+    /** Which spelling to name notes with - the b/# switch. */
+    void setPreferFlats(bool shouldPreferFlats);
     void setPlaceholder(const juce::String& text);
 
     void paint(juce::Graphics&) override;
@@ -36,6 +38,7 @@ private:
     /** Kept as a pitch rather than a pointer: the sequences are replaced on
         every regenerate, and a pointer into them would dangle. */
     int hoveredPitch = -1;
+    bool preferFlats = false;
     bool hoveredIsSource = false;
     juce::Point<float> hoverPosition;
 
