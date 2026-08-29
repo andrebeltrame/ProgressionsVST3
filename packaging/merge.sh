@@ -75,6 +75,11 @@ lipo -archs "$BUNDLE/Contents/MacOS/Progressions" | grep -q x86_64
 mkdir -p "$PAYLOAD/Windows - single file"
 cp "$WIN_DLL" "$PAYLOAD/Windows - single file/Progressions.vst3"
 
+# Every Windows failure so far has been silent, so the script that installs it
+# also reports what ended up on disk. Four manual steps become one double-click
+# and, when it still does not work, something to read.
+cp "$ROOT/packaging/install-windows.ps1" "$PAYLOAD/Windows - single file/install-windows.ps1"
+
 # The instructions travel with the plug-in: whoever downloads this gets both,
 # and nobody has to be told where the VST3 folder is in a chat message they
 # will not have when they need it.
