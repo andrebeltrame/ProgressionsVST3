@@ -436,22 +436,29 @@ void ProgressionsEditor::refreshPartButtons()
     for (int i = 0; i < partButtons.size(); ++i)
     {
         const bool live = processor.isPartLive(i);
+        const bool stale = processor.isPartStale(i);
+
+        // A dot for "this one is written and playing", an asterisk for "it was
+        // written over a pad that is no longer there". The MIDI channel used to
+        // be here too, but Ableton Live discards channel information when it
+        // routes from a plug-in, so for a Live user the number is a piece of
+        // furniture that never means anything. It stays in the tooltip, where
+        // whoever is on a host that honours channels can still find it.
+        // Built from the code point rather than a literal: a raw UTF-8 byte
+        // string reaches juce::String as Latin-1 and the dot arrives as mojibake.
+        static const juce::String bullet = juce::String::charToString(juce::juce_wchar(0x2022));
+
         auto text = kPartLabels[i];
         if (live)
-        {
-            // The channel is the whole point of stacking: it is what a host
-            // needs to send this part to its own instrument.
-            text += "  " + juce::String(processor.channelForPart(i));
-            if (processor.isPartStale(i))
-                text += "*";
-        }
+            text += "  " + bullet + (stale ? "*" : "");
         if (partButtons[i]->getButtonText() != text)
             partButtons[i]->setButtonText(text);
 
         partButtons[i]->setTooltip(live
-            ? "Written, playing on MIDI channel " + juce::String(processor.channelForPart(i))
-                  + (processor.isPartStale(i) ? " - written over a different pad than the one playing now"
-                                              : "")
+            ? juce::String("Written and playing")
+                  + (stale ? ", over a different pad than the one playing now" : "")
+                  + ".  MIDI channel " + juce::String(processor.channelForPart(i))
+                  + " - useful in a host that keeps channels; Live does not."
             : "Write a " + kPartLabels[i].toLowerCase() + " over the harmony");
     }
 }
