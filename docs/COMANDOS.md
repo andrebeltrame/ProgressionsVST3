@@ -230,3 +230,25 @@ pista do instrumento dela.
    *Track In* / *Pre FX* / *Post FX*.
 4. Monitor em **In**.
 5. Desligue **Preview sound** no plugin, senão você ouve os dois.
+
+## Gerar os binários no CI
+
+Os builds de macOS e Windows **não** rodam mais a cada push: o runner do macOS
+custa 10× o tempo real e o do Windows 2×, e um dia de commits normais esgotou a
+cota mensal da conta. Quando a cota acaba, todo job falha em segundos sem runner
+e sem log — parece exatamente com o código estar quebrado.
+
+O que roda em todo push são os testes do motor, que são Linux e custam o que
+dizem. Os binários você pede quando quer:
+
+**Na aba Actions** → workflow **Build** → botão **Run workflow** → escolha o
+branch → **Run workflow**. Sai `macos-build` e `windows-build` como artefatos.
+
+**Ou empurrando uma tag**, que além dos binários publica o release com o zip:
+
+```bash
+git tag -a v1.1.0 -m "Progressions 1.1.0" && git push origin v1.1.0
+```
+
+Se os jobs falharem em segundos, com `runner_id: 0` e 404 nos logs, é cota —
+veja Settings → Billing and licensing → Plans and usage → Actions.
