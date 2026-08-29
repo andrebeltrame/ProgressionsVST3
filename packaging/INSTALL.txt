@@ -62,14 +62,20 @@ INSTALL - Windows
 
 IF IT STILL DOES NOT APPEAR
 
-   Some Windows hosts do not read the bundle folder. This download also
-   holds the same plug-in as a single file, in "Windows - single file".
+   Some Windows hosts do not read the bundle folder. The plug-in they can
+   read is the single file already inside it:
 
-   Delete the "Progressions.vst3" FOLDER you copied in step 2, then copy
-   the "Progressions.vst3" FILE from that folder into the same place.
-   Use one or the other, never both, or the plug-in is listed twice.
+       Progressions.vst3\Contents\x86_64-win\Progressions.vst3
+
+   Delete the "Progressions.vst3" FOLDER you copied in step 2, and copy
+   that FILE into the same place instead. Do not rename it - in a
+   single-file VST3 the filename is the name of the module. Use one or
+   the other, never both, or the plug-in is listed twice.
 
    Then hold Alt and Rescan again.
+
+   Or just run install-windows.ps1, which does all of this and prints
+   what it found: right-click it -> "Run with PowerShell".
 
 
 --------------------------------------------------------------------------
@@ -108,9 +114,13 @@ Windows: ANTES de extrair, botao direito no .zip, Propriedades, marque
 C:\Program Files\Common Files\VST3\Nowhr Dynamics\.
 
 Se mesmo assim o plugin nao aparecer na lista: apague a PASTA que voce
-copiou e use no lugar o ARQUIVO "Progressions.vst3" que esta em
-"Windows - single file". Um ou outro, nunca os dois. Segure Alt ao clicar
-em Rescan - e isso que faz o Live reexaminar um plugin que ele ja recusou.
+copiou e use no lugar o ARQUIVO que esta dentro dela, em
+Progressions.vst3\Contents\x86_64-win\Progressions.vst3. Nao renomeie.
+Um ou outro, nunca os dois. Segure Alt ao clicar em Rescan - e isso que
+faz o Live reexaminar um plugin que ele ja recusou.
+
+Mais simples: rode o install-windows.ps1 que veio junto (botao direito ->
+Executar com o PowerShell). Ele faz tudo isso e mostra o que encontrou.
 
 Nos dois casos: reinicie o DAW e faca um rescan de plugins. No Ableton Live,
 segure Option (Mac) ou Alt (Windows) ao clicar em Rescan. O Progressions

@@ -66,19 +66,15 @@ file "$BUNDLE/Contents/x86_64-win/Progressions.vst3" | grep -q "PE32+"
 lipo -archs "$BUNDLE/Contents/MacOS/Progressions" | grep -q arm64
 lipo -archs "$BUNDLE/Contents/MacOS/Progressions" | grep -q x86_64
 
-# The same Windows binary again, on its own. A bundle folder is the layout the
-# VST3 spec asks for and most hosts read it, but a Windows user has already hit
-# a host that would not - it scanned, finished, and simply never listed the
-# plug-in, with nothing said anywhere. The DLL is a complete module by itself,
-# so shipping it costs one copy and gives that person something to try instead
-# of nothing.
-mkdir -p "$PAYLOAD/Windows - single file"
-cp "$WIN_DLL" "$PAYLOAD/Windows - single file/Progressions.vst3"
-
+# One plug-in in the download, not two. The bundle already holds both binaries -
+# that is what the layout is for - and the single Windows file a stubborn host
+# might need is the one inside it, at Contents/x86_64-win. A second copy beside
+# it only invites installing both and getting the plug-in listed twice.
+#
 # Every Windows failure so far has been silent, so the script that installs it
-# also reports what ended up on disk. Four manual steps become one double-click
-# and, when it still does not work, something to read.
-cp "$ROOT/packaging/install-windows.ps1" "$PAYLOAD/Windows - single file/install-windows.ps1"
+# also reports what ended up on disk. It takes either layout, so it can install
+# the bundle or the file pulled out of it.
+cp "$ROOT/packaging/install-windows.ps1" "$PAYLOAD/install-windows.ps1"
 
 # The instructions travel with the plug-in: whoever downloads this gets both,
 # and nobody has to be told where the VST3 folder is in a chat message they
