@@ -18,6 +18,7 @@ const char* toString(PartType part)
         case PartType::Melody:        return "Melody";
         case PartType::CounterMelody: return "Counter Melody";
         case PartType::Bass:          return "Bass";
+        case PartType::Reese:         return "Reese";
         case PartType::Arp:           return "Arp";
         case PartType::Pluck:         return "Pluck";
     }
@@ -36,6 +37,7 @@ bool partTypeFromString(const std::string& text, PartType& out)
     if (lower == "melody" || lower == "lead")              { out = PartType::Melody; return true; }
     if (lower == "counter" || lower == "countermelody")    { out = PartType::CounterMelody; return true; }
     if (lower == "bass")                                   { out = PartType::Bass; return true; }
+    if (lower == "reese" || lower == "sub" || lower == "drone") { out = PartType::Reese; return true; }
     if (lower == "arp" || lower == "arpeggio")             { out = PartType::Arp; return true; }
     if (lower == "pluck" || lower == "pluk" || lower == "stab") { out = PartType::Pluck; return true; }
     return false;
@@ -50,6 +52,9 @@ void defaultRange(PartType part, int& lowPitch, int& highPitch)
         case PartType::Melody:        lowPitch = 64; highPitch = 88; break;
         case PartType::CounterMelody: lowPitch = 59; highPitch = 81; break;
         case PartType::Bass:          lowPitch = 28; highPitch = 55; break;
+        // A Reese lives lower and narrower than the plucked bass: it is one
+        // moving voice, not a line, and the octave it sits in is the sound.
+        case PartType::Reese:         lowPitch = 24; highPitch = 48; break;
         case PartType::Arp:           lowPitch = 60; highPitch = 91; break;
         case PartType::Pluck:         lowPitch = 60; highPitch = 91; break;
     }
@@ -424,6 +429,7 @@ void adjustRangeForSource(Context& ctx, PartType part)
             break;
 
         case PartType::Bass:
+        case PartType::Reese:
             if (role != SourceRole::Bass)
                 ctx.highPitch = std::min(ctx.highPitch, std::max(ctx.lowPitch + 12, rhythm.lowestPitch - 1));
             break;
@@ -655,6 +661,90 @@ NoteSequence writeBass(Context& ctx)
                 out.notes.pop_back();
         }
     }
+    return out;
+}
+
+/** A Reese: one sustained low voice that moves rather than a line that plays.
+    Held notes, not hits, and every note **overlaps the one before it** - that
+    overlap is the whole point. A mono synth only glides when the next note
+    starts while the last is still held, so a bassline written as separate notes
+    can never portamento however the synth is set. Anyone who wants that glide
+    automated later needs the MIDI to allow it in the first place. */
+NoteSequence writeReese(Context& ctx)
+{
+    NoteSequence out;
+    const auto& options = *ctx.options;
+
+    // How much the line is allowed to move away from the root. Straight by
+    // design - a Reese that wanders stops being a bed - but never a flat drone.
+    const float motion = std::clamp(options.density * 0.7f + options.complexity * 0.3f, 0.0f, 1.0f);
+
+    // Notes overlap by an eighth, or by whatever the shortest note allows, so
+    // consecutive notes are legato and the synth's glide has something to do.
+    const int64_t overlap = std::max<int64_t>(1, ctx.beatTicks / 2);
+
+    const int root = ctx.lowPitch + 12;
+    int previous = -1;
+
+    for (size_t i = 0; i < ctx.progression.size(); ++i)
+    {
+        const auto& segment = ctx.progression[i];
+        const Chord chord = segment.chord;
+
+        // Where the chord sits: nearest root to the last note, so the line
+        // moves by the smallest step it can and the glide stays short.
+        int pitch = nearestPitchWithClass(chord.root, previous >= 0 ? previous : root);
+        pitch = clampPitch(pitch, ctx.lowPitch, ctx.highPitch);
+
+        // One chord, one held note, sometimes two: the second is the small
+        // variation - a fifth, an octave, or a step up to the next root - late
+        // in the bar so it reads as a move towards the next chord.
+        const bool splits = motion > 0.25f && segment.lengthTick >= ctx.barTicks
+                            && ctx.rng.chance(0.25f + 0.45f * motion);
+
+        const int64_t start = segment.startTick;
+        const int64_t end = std::min(segment.endTick(), ctx.totalTicks);
+        if (end <= start)
+            continue;
+
+        const int64_t split = splits ? start + (end - start) * 2 / 3 : end;
+
+        Note first;
+        first.startTick = start;
+        // Reaches past its own chord so the next note starts over it.
+        first.lengthTick = split - start + overlap;
+        first.pitch = pitch;
+        first.velocity = std::clamp(options.baseVelocity - 4, 1, 127);
+        first.channel = options.channel;
+        out.notes.push_back(first);
+        previous = pitch;
+
+        if (splits)
+        {
+            // The move: a fifth, an octave, or a step towards the chord ahead.
+            const auto tones = chord.pitchClasses();
+            int target = pitch;
+            const int roll = ctx.rng.range(0, 2);
+            if (roll == 0 && tones.size() > 2)
+                target = nearestPitchWithClass(tones[2], pitch);      // the fifth
+            else if (roll == 1 && pitch + 12 <= ctx.highPitch)
+                target = pitch + 12;                                   // the octave
+            else if (i + 1 < ctx.progression.size())
+                target = nearestPitchWithClass(ctx.progression[i + 1].chord.root, pitch);
+
+            target = clampPitch(target, ctx.lowPitch, ctx.highPitch);
+
+            Note second;
+            second.startTick = split;
+            second.lengthTick = end - split + overlap;
+            second.pitch = target;
+            second.velocity = std::clamp(options.baseVelocity - 10, 1, 127);
+            second.channel = options.channel;
+            out.notes.push_back(second);
+            previous = target;
+        }
+    }
+
     return out;
 }
 
@@ -1350,13 +1440,15 @@ NoteSequence generate(const Analysis& analysis, const NoteSequence& source, cons
         case PartType::Bass:          out.notes = writeBass(ctx).notes; break;
         case PartType::Arp:           out.notes = writeArp(ctx).notes; break;
         case PartType::Pluck:         out.notes = writePluck(ctx).notes; break;
+        case PartType::Reese:         out.notes = writeReese(ctx).notes; break;
         case PartType::Melody:        out.notes = writeMelodicLine(ctx, false).notes; break;
         case PartType::CounterMelody: out.notes = writeMelodicLine(ctx, true).notes; break;
     }
 
     // A pad that drifts off the bar line just sounds late, so it only gets the
-    // velocity half of the humanisation.
-    humanise(ctx, out, options.part != PartType::Pad);
+    // velocity half of the humanisation. A Reese is excluded for a harder
+    // reason: nudging a start earlier eats the overlap the glide depends on.
+    humanise(ctx, out, options.part != PartType::Pad && options.part != PartType::Reese);
 
     for (auto& note : out.notes)
     {

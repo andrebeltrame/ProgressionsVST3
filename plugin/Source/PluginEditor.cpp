@@ -7,7 +7,7 @@ using namespace harmonia;
 
 namespace
 {
-const juce::StringArray kPartLabels { "Pad", "Chords", "Melody", "Counter", "Bass", "Arp", "Pluck" };
+const juce::StringArray kPartLabels { "Pad", "Chords", "Melody", "Counter", "Bass", "Reese", "Arp", "Pluck" };
 const juce::StringArray kModeNames { "Major", "Minor", "Dorian", "Mixolydian", "Lydian", "Phrygian", "Harmonic Minor" };
 
 harmonia::ScaleType scaleForModeIndex(int index)
@@ -514,15 +514,20 @@ void ProgressionsEditor::refresh()
     }
     infoPanel.setRows(std::move(rows));
 
-    const int part = juce::roundToInt(processor.apvts.getRawParameterValue(ParamID::part)->load());
-    const bool chordPart = part == 0 || part == 1 || part == 5;
+    // Named rather than counted: adding a part shifts every index after it, and
+    // the last time these were positions the Arp controls followed the wrong tab.
+    const auto part = static_cast<harmonia::PartType>(
+        juce::jlimit(0, kNumParts - 1,
+                     juce::roundToInt(processor.apvts.getRawParameterValue(ParamID::part)->load())));
+
+    const bool chordPart = part == PartType::Pad || part == PartType::Chords || part == PartType::Arp;
     voicesKnob.slider.setEnabled(chordPart);
     voicesKnob.label.setEnabled(chordPart);
-    const bool melodicPart = part == 2 || part == 3;
+    const bool melodicPart = part == PartType::Melody || part == PartType::CounterMelody;
     craftKnob.slider.setEnabled(melodicPart);
     craftKnob.label.setEnabled(melodicPart);
-    arpBox.setEnabled(part == 5);
-    arpLabel.setEnabled(part == 5);
+    arpBox.setEnabled(part == PartType::Arp);
+    arpLabel.setEnabled(part == PartType::Arp);
 
     const bool hasOutput = ! processor.getGeneratedSequence().empty();
     exportButton.setEnabled(hasOutput);

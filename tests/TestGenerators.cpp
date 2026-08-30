@@ -354,8 +354,8 @@ TEST(EveryPartTypeProducesNotes)
 {
     auto engine = engineFromBassLine();
     for (PartType part : { PartType::Pad, PartType::Chords, PartType::Melody,
-                           PartType::CounterMelody, PartType::Bass, PartType::Arp,
-                           PartType::Pluck })
+                           PartType::CounterMelody, PartType::Bass, PartType::Reese,
+                           PartType::Arp, PartType::Pluck })
     {
         const auto sequence = engine.generate(cleanOptions(part));
         CHECK(! sequence.empty());
@@ -373,8 +373,8 @@ TEST(NoPartRingsPastTheLoop)
 {
     auto engine = engineFromBassLine();
     for (PartType part : { PartType::Pad, PartType::Chords, PartType::Melody,
-                           PartType::CounterMelody, PartType::Bass, PartType::Arp,
-                           PartType::Pluck })
+                           PartType::CounterMelody, PartType::Bass, PartType::Reese,
+                           PartType::Arp, PartType::Pluck })
     {
         const auto sequence = engine.generate(cleanOptions(part));
         CHECK(sequence.loopLengthTicks > 0);
@@ -462,4 +462,67 @@ TEST(PartsWrittenAgainstAPadStayOutOfItsWay)
     // Reading the pad has to change the line, or the anchor does nothing at all.
     CHECK(different == 8);
     CHECK(overPad < alone);
+}
+
+TEST(ReeseIsLegatoSoASynthCanGlide)
+{
+    auto engine = engineFromBassLine();
+    const auto reese = engine.generate(cleanOptions(PartType::Reese));
+    CHECK(! reese.empty());
+
+    // Every note has to start before the one before it ends. A mono synth only
+    // portamentos between overlapping notes, so a gap here is a Reese that can
+    // never glide however the synth is set up.
+    for (size_t i = 1; i < reese.notes.size(); ++i)
+    {
+        const auto& previous = reese.notes[i - 1];
+        const auto& current = reese.notes[i];
+        CHECK(current.startTick < previous.endTick());
+    }
+
+    // Held, not plucked: nothing shorter than a beat.
+    for (const auto& note : reese.notes)
+        CHECK(note.lengthTick >= reese.ppq);
+
+    // And it stays under the plucked bass, where a Reese belongs.
+    const auto bass = engine.generate(cleanOptions(PartType::Bass));
+    const auto average = [](const NoteSequence& part)
+    {
+        int total = 0;
+        for (const auto& note : part.notes)
+            total += note.pitch;
+        return part.notes.empty() ? 0 : total / static_cast<int>(part.notes.size());
+    };
+    CHECK(average(reese) < average(bass));
+}
+
+TEST(ReeseMovesWithoutWandering)
+{
+    auto engine = engineFromBassLine();
+
+    // It has to answer a new seed like everything else...
+    auto options = cleanOptions(PartType::Reese);
+    options.density = 0.8f;
+    options.seed = 7;
+    const auto first = engine.generate(options);
+    options.seed = 8;
+    const auto second = engine.generate(options);
+    CHECK(! first.empty() && ! second.empty());
+
+    // ...but stay a bed: every note is a chord tone of the chord under it.
+    const auto& analysis = engine.analysis();
+    for (const auto& part : { first, second })
+    {
+        for (const auto& note : part.notes)
+        {
+            const ChordSegment* segment = nullptr;
+            for (const auto& candidate : analysis.progression)
+                if (note.startTick >= candidate.startTick && note.startTick < candidate.endTick())
+                    segment = &candidate;
+            if (segment == nullptr)
+                continue;
+            CHECK(segment->chord.containsPitchClass(note.pitch)
+                  || analysis.key.contains(mod12(note.pitch)));
+        }
+    }
 }

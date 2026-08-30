@@ -53,7 +53,8 @@ atualizar, conferir, aprender a coleção, compartilhar.
 | **Chords** | O mesmo material em bloco rítmico, seguindo o groove. |
 | **Melody** | Linha construída sobre um motivo curto e **trabalhado** ao longo da frase: inversão, retrógrado, fragmentação e notas de passagem, com arco de altura (segura, sobe, pico, assenta). O botão **Craft** dosa o quanto. |
 | **Counter** | Igual à melodia, mas empurrada para movimento contrário ao do clipe e proibida de dobrar as suas notas. |
-| **Bass** | Fundamental com quintas, oitavas e aproximações cromáticas para o próximo acorde. |
+| **Bass** | Fundamental com quintas, oitavas e aproximações cromáticas para o próximo acorde. Sincopado, seguindo o groove. |
+| **Reese** | Uma voz grave sustentada em vez de uma linha tocada: notas longas, retas, uma por acorde — às vezes duas, quando a segunda empurra para o acorde seguinte com uma quinta, uma oitava ou um passo. **Cada nota se sobrepõe à anterior**, e isso não é detalhe: um synth mono só faz portamento quando a nota nova começa com a anterior ainda soando. Sem essa sobreposição no MIDI, nenhum ajuste de glide no sintetizador funciona. Fica uma oitava abaixo do Bass. |
 | **Arp** | Notas do acorde em Up / Down / Up-Down / Down-Up / Converge / Random. A corrida em si continua regular — uma corrida embaralhada deixa de ser arpejo — mas **New idea** troca a figura por cima dela: onde a corrida começa, até onde ela alcança, se os ciclos sobem uma oitava e onde ela respira. Os acentos seguem o groove que estiver embaixo. |
 | **Pluck** | Notas curtas do acorde em cima do groove, com saltos e oitavas dobradas nos acentos — o pluck de house. |
 

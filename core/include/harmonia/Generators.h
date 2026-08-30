@@ -19,12 +19,13 @@ enum class PartType
     Melody,        // singable lead line
     CounterMelody, // second line designed to sit against the source
     Bass,          // root-driven low line
+    Reese,         // sustained low line, notes tied so a synth can glide between them
     Arp,           // broken chord pattern
     Pluck          // short chord tones on the groove, house-style
 };
 
 const char* toString(PartType part);
-/** Parses "pad", "chords", "melody", "counter", "bass", "arp". Returns false if unknown. */
+/** Parses "pad", "chords", "melody", "counter", "bass", "reese", "arp". Returns false if unknown. */
 bool partTypeFromString(const std::string& text, PartType& out);
 
 enum class ArpPattern

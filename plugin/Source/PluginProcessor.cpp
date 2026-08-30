@@ -11,7 +11,7 @@ using namespace harmonia;
 namespace
 {
 
-const juce::StringArray kPartNames { "Pad", "Chords", "Melody", "Counter Melody", "Bass", "Arp", "Pluck" };
+const juce::StringArray kPartNames { "Pad", "Chords", "Melody", "Counter Melody", "Bass", "Reese", "Arp", "Pluck" };
 const juce::StringArray kBarChoices { "As source", "1", "2", "4", "8", "16" };
 const juce::StringArray kArpChoices { "Up", "Down", "Up-Down", "Down-Up", "Converge", "Random" };
 const juce::StringArray kHarmonyChoices { "Auto", "1 per bar", "2 per bar", "1 per beat" };

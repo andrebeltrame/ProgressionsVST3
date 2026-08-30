@@ -158,6 +158,16 @@ pad and a lead — plus the tests, before and after.
 
 `docs/COMO_FUNCIONA.md` explains why each of these exists.
 
+### The Reese overlaps on purpose
+
+`writeReese` is the only generator whose notes deliberately run into each other:
+each note reaches an eighth past where the next one starts. A monophonic synth
+only portamentos between overlapping notes, so a bassline written as separate
+notes can never glide however the synth is patched - the MIDI has to allow it.
+That is also why the Reese is excluded from timing humanisation in `generate()`:
+nudging a start earlier eats the overlap. Anything that shortens or shifts notes
+has to leave this part alone.
+
 ### The pad anchors, and never overwrites
 
 `GenerateOptions::anchor` is the part everything else is written around. Lines
