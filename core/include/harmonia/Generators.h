@@ -21,11 +21,16 @@ enum class PartType
     Bass,          // root-driven low line
     Reese,         // sustained low line, notes tied so a synth can glide between them
     Arp,           // broken chord pattern
-    Pluck          // short chord tones on the groove, house-style
+    Pluck,         // short chord tones on the groove, house-style
+    // Appended rather than filed next to Bass and Reese, where it belongs
+    // musically: the plugin stores the selected part as an index, so inserting
+    // one in the middle would reopen every saved project on a different part.
+    Sub            // the fundamental and nothing else, one octave, never two at once
 };
 
 const char* toString(PartType part);
-/** Parses "pad", "chords", "melody", "counter", "bass", "reese", "arp". Returns false if unknown. */
+/** Parses "pad", "chords", "melody", "counter", "bass", "reese", "sub", "arp".
+    Returns false if unknown. */
 bool partTypeFromString(const std::string& text, PartType& out);
 
 enum class ArpPattern

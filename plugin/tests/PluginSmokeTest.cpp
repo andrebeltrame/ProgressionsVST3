@@ -399,6 +399,42 @@ int main(int argc, char** argv)
         libraryFolder.deleteRecursively();
     }
 
+    // ---- Every part writes something ------------------------------------------
+    {
+        // A part added to the enum but missed in a switch comes out silent, and
+        // nothing else would notice: the tab is there, the plug-in is happy, and
+        // the part is empty. Walk all of them.
+        auto* parameter = processor.apvts.getParameter(ParamID::part);
+        for (int index = 0; index < kNumParts; ++index)
+        {
+            parameter->setValueNotifyingHost(parameter->convertTo0to1(static_cast<float>(index)));
+            processor.regenerate();
+            check(! processor.getGeneratedSequence().empty(),
+                  ("part " + juce::String(index) + " writes notes").toRawUTF8());
+        }
+        processor.dropAllParts();
+    }
+
+    // ---- The Sub is one voice on the root --------------------------------------
+    {
+        auto* parameter = processor.apvts.getParameter(ParamID::part);
+        parameter->setValueNotifyingHost(parameter->convertTo0to1(static_cast<float>(kNumParts - 1)));
+        processor.apvts.getParameter(ParamID::density)->setValueNotifyingHost(1.0f);
+        processor.regenerate();
+
+        const auto& subPart = processor.getGeneratedSequence();
+        check(! subPart.empty(), "the sub writes notes");
+
+        bool single = true;
+        for (size_t i = 1; i < subPart.notes.size(); ++i)
+            single = single && subPart.notes[i].startTick >= subPart.notes[i - 1].endTick();
+        check(single, "and never two of them at once, however busy it is set");
+
+        processor.apvts.getParameter(ParamID::density)->setValueNotifyingHost(0.5f);
+        processor.dropAllParts();
+        processor.regenerate();
+    }
+
     // ---- Locked chords --------------------------------------------------------
     {
         processor.resetProgression();

@@ -44,6 +44,9 @@ inline const PreviewCharacter& previewCharacter(int index)
         { 0.030f, 0.40f, 0.95f, 0.45f, 1.0060f, 0.28f, 1.25f }, // Reese - held, detuned, dark
         { 0.004f, 0.12f, 0.35f, 0.16f, 1.0015f, 1.40f, 0.90f }, // Arp
         { 0.003f, 0.09f, 0.20f, 0.12f, 1.0025f, 1.60f, 0.95f }, // Pluck
+        // Sub - one oscillator, no detune, as close to a sine as this gets, and
+        // a short release so two roots never ring into each other down there.
+        { 0.006f, 0.20f, 0.98f, 0.10f, 1.0000f, 0.12f, 1.35f }, // Sub
     };
     constexpr int count = static_cast<int>(std::size(characters));
     return characters[juce::jlimit(0, count - 1, index)];

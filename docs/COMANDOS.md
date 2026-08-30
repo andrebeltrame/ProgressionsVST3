@@ -142,6 +142,13 @@ tempo — se for o seu caso, peça sem sobreposição:
 ./build/cli/harmonia-cli resources/examples/bass_loop.mid --part reese --no-glide --out ~/ideias
 ```
 
+O **Sub** é outra parte, não um Reese mais grave: fundamental do acorde, uma
+oitava só, nunca duas notas juntas. O `--density` decide se ele segura ou repete:
+
+```bash
+./build/cli/harmonia-cli resources/examples/bass_loop.mid --part sub --density 0.9 --out ~/ideias
+```
+
 ---
 
 ## Compartilhar

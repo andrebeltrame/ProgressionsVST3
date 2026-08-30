@@ -7,7 +7,8 @@ using namespace harmonia;
 
 namespace
 {
-const juce::StringArray kPartLabels { "Pad", "Chords", "Melody", "Counter", "Bass", "Reese", "Arp", "Pluck" };
+const juce::StringArray kPartLabels { "Pad", "Chords", "Melody", "Counter", "Bass", "Reese",
+                                      "Arp", "Pluck", "Sub" };
 const juce::StringArray kModeNames { "Major", "Minor", "Dorian", "Mixolydian", "Lydian", "Phrygian", "Harmonic Minor" };
 
 harmonia::ScaleType scaleForModeIndex(int index)
@@ -571,6 +572,11 @@ void ProgressionsEditor::refresh()
     const bool melodicPart = part == PartType::Melody || part == PartType::CounterMelody;
     craftKnob.slider.setEnabled(melodicPart);
     craftKnob.label.setEnabled(melodicPart);
+    // The Sub plays roots and only roots, so extensions and chromatic movement
+    // have nothing to act on. Saying so is better than a knob that does nothing.
+    const bool colouredPart = part != PartType::Sub;
+    complexityKnob.slider.setEnabled(colouredPart);
+    complexityKnob.label.setEnabled(colouredPart);
     arpBox.setEnabled(part == PartType::Arp);
     arpLabel.setEnabled(part == PartType::Arp);
     // The overlap is a property of the Reese and of nothing else, so the switch

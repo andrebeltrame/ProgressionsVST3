@@ -55,6 +55,7 @@ atualizar, conferir, aprender a coleção, compartilhar.
 | **Counter** | Igual à melodia, mas empurrada para movimento contrário ao do clipe e proibida de dobrar as suas notas. |
 | **Bass** | Fundamental com quintas, oitavas e aproximações cromáticas para o próximo acorde. Sincopado, seguindo o groove. |
 | **Reese** | Uma voz grave sustentada em vez de uma linha tocada. As durações variam: um acorde pode ficar numa nota longa só ou ser dividido em duas ou três mais curtas — nunca abaixo de um tempo, senão vira pluck e não Reese. As notas que se movem vão para a quinta, para a oitava ou para um passo em direção ao próximo acorde. O interruptor **Glide** decide o resto: ligado, cada nota se sobrepõe à seguinte, que é a única forma de um synth mono fazer portamento — sem essa sobreposição no MIDI, nenhum ajuste de glide no sintetizador funciona. Desligado, cada nota termina exatamente onde a próxima começa: nada se sobrepõe, nada soma no grave, que é o que um patch **polifônico** precisa. Fica uma oitava abaixo do Bass. |
+| **Sub** | A fundamental e mais nada. Não é um Reese uma oitava abaixo: o Reese *se movimenta* — quinta, oitava, um passo para o próximo acorde — e um sub que se movimenta deixou de ser sub. Toca a fundamental do acorde que estiver soando, numa oitava só (C1–C2, e o botão **Octave** move o conjunto). Duas regras que ele não quebra, porque quebrar qualquer uma das duas é o que arruína o grave: **nunca duas notas ao mesmo tempo** — um sub é uma voz por definição, e dois somados viram uma lama que mixagem nenhuma desfaz — e **nunca mais curto que um tempo**, senão vira bumbo, e bumbo já tem. O **Density** é o único botão que faz diferença aqui: embaixo é uma nota segurada por acorde, no meio ele repete a fundamental na metade do compasso, em cima repete a cada tempo. A decisão é por compasso inteiro, não por batida — sortear batidas soltas não soa como um compasso que respira, soa como um sub com defeito. |
 | **Arp** | Notas do acorde em Up / Down / Up-Down / Down-Up / Converge / Random. A corrida em si continua regular — uma corrida embaralhada deixa de ser arpejo — mas **New idea** troca a figura por cima dela: onde a corrida começa, até onde ela alcança, se os ciclos sobem uma oitava e onde ela respira. Os acentos seguem o groove que estiver embaixo. |
 | **Pluck** | Notas curtas do acorde em cima do groove, com saltos e oitavas dobradas nos acentos — o pluck de house. |
 
@@ -617,6 +618,8 @@ Detalhes que valem saber:
 - **Surprise me** inventa tudo do zero — tonalidade, modo, progressão e semente
   — e escreve a parte selecionada. Com biblioteca aprendida, sorteia entre os
   loops de graus que a sua coleção realmente toca.
+- **Colour** não faz nada no **Sub**, e por isso aparece apagado ali: a parte
+  toca fundamentais, e extensão e cromatismo não têm onde agir.
 - **Glide** só existe para o **Reese**. Ligado, as notas se encavalam, que é a
   única forma de um synth **mono** fazer portamento entre elas. Desligado, cada
   nota termina onde a próxima começa — nada soma no grave, que é o que um patch

@@ -613,3 +613,86 @@ TEST(ReeseNeverStacksAPitchOnItself)
                           || reese.notes[i].startTick >= reese.notes[j].endTick());
     }
 }
+
+TEST(SubIsOneVoiceOnTheRoot)
+{
+    auto engine = engineFromBassLine();
+
+    for (uint32_t seed = 1; seed <= 12; ++seed)
+    {
+        auto options = cleanOptions(PartType::Sub);
+        options.seed = seed;
+        options.density = 0.9f;      // the busiest it will ever be
+        options.complexity = 1.0f;
+        const auto subPart = engine.generate(options);
+        CHECK(! subPart.empty());
+
+        const auto& analysis = engine.analysis();
+        for (size_t i = 0; i < subPart.notes.size(); ++i)
+        {
+            const auto& note = subPart.notes[i];
+
+            // The root of whatever chord is sounding, never a third or a fifth.
+            const auto* segment = analysis.chordAt(note.startTick);
+            CHECK(segment != nullptr);
+            if (segment != nullptr)
+                CHECK(note.pitch % 12 == segment->chord.root % 12);
+
+            // Never a kick: nothing shorter than a beat.
+            CHECK(note.lengthTick >= subPart.ppq);
+
+            // Never two at once. This is the rule the whole part exists for -
+            // two subs sounding together sum into a low end nobody can mix.
+            if (i > 0)
+                CHECK(note.startTick >= subPart.notes[i - 1].endTick());
+        }
+
+        // One octave and no more: a sub that ranges has stopped being a sub.
+        int low = 127, high = 0;
+        for (const auto& note : subPart.notes)
+        {
+            low = std::min(low, note.pitch);
+            high = std::max(high, note.pitch);
+        }
+        CHECK(high - low <= 12);
+    }
+}
+
+TEST(SubSitsUnderTheBassAndTheReese)
+{
+    auto engine = engineFromBassLine();
+    const auto average = [](const NoteSequence& part)
+    {
+        int total = 0;
+        for (const auto& note : part.notes)
+            total += note.pitch;
+        return part.notes.empty() ? 0 : total / static_cast<int>(part.notes.size());
+    };
+
+    const auto subPart = engine.generate(cleanOptions(PartType::Sub));
+    CHECK(average(subPart) < average(engine.generate(cleanOptions(PartType::Reese))));
+    CHECK(average(subPart) < average(engine.generate(cleanOptions(PartType::Bass))));
+}
+
+TEST(SubHoldsWhenItIsToldTo)
+{
+    // Density is the only knob that does anything here: at the bottom it is one
+    // held note per chord, and turned up it strikes the root again on the bar.
+    auto engine = engineFromBassLine();
+
+    auto still = cleanOptions(PartType::Sub);
+    still.density = 0.0f;
+    const auto held = engine.generate(still);
+
+    size_t busiest = held.notes.size();
+    for (uint32_t seed = 1; seed <= 8; ++seed)
+    {
+        auto moving = cleanOptions(PartType::Sub);
+        moving.seed = seed;
+        moving.density = 1.0f;
+        busiest = std::max(busiest, engine.generate(moving).notes.size());
+    }
+
+    CHECK(held.notes.size() == engine.analysis().progression.size());
+    CHECK(busiest > held.notes.size());
+}

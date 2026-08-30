@@ -21,6 +21,7 @@ const char* toString(PartType part)
         case PartType::Reese:         return "Reese";
         case PartType::Arp:           return "Arp";
         case PartType::Pluck:         return "Pluck";
+        case PartType::Sub:           return "Sub";
     }
     return "Pad";
 }
@@ -37,7 +38,8 @@ bool partTypeFromString(const std::string& text, PartType& out)
     if (lower == "melody" || lower == "lead")              { out = PartType::Melody; return true; }
     if (lower == "counter" || lower == "countermelody")    { out = PartType::CounterMelody; return true; }
     if (lower == "bass")                                   { out = PartType::Bass; return true; }
-    if (lower == "reese" || lower == "sub" || lower == "drone") { out = PartType::Reese; return true; }
+    if (lower == "reese" || lower == "drone")              { out = PartType::Reese; return true; }
+    if (lower == "sub" || lower == "subbass" || lower == "808") { out = PartType::Sub; return true; }
     if (lower == "arp" || lower == "arpeggio")             { out = PartType::Arp; return true; }
     if (lower == "pluck" || lower == "pluk" || lower == "stab") { out = PartType::Pluck; return true; }
     return false;
@@ -57,6 +59,10 @@ void defaultRange(PartType part, int& lowPitch, int& highPitch)
         case PartType::Reese:         lowPitch = 24; highPitch = 48; break;
         case PartType::Arp:           lowPitch = 60; highPitch = 91; break;
         case PartType::Pluck:         lowPitch = 60; highPitch = 91; break;
+        // One octave, C1 to C2, and that is the whole part. A sub that ranges
+        // stops being a sub; if it needs to sit somewhere else, that is what
+        // the octave shift is for.
+        case PartType::Sub:           lowPitch = 24; highPitch = 36; break;
     }
 }
 
@@ -439,6 +445,12 @@ void adjustRangeForSource(Context& ctx, PartType part)
             if (role == SourceRole::Bass)
                 ctx.lowPitch = std::max(ctx.lowPitch, rhythm.highestPitch + 4);
             break;
+
+        case PartType::Sub:
+            // Deliberately nothing. Every other part gets moved out of the
+            // clip's way; the sub's octave *is* the part, and a sub pushed up
+            // to keep clear of a bassline is no longer doing its job.
+            break;
     }
 
     if (ctx.highPitch - ctx.lowPitch < 12)
@@ -804,6 +816,110 @@ NoteSequence writeReese(Context& ctx)
             note.channel = options.channel;
             out.notes.push_back(note);
             previous = pitch;
+        }
+    }
+
+    return out;
+}
+
+/** A Sub: the fundamental, and nothing else.
+
+    This is not a Reese an octave down. The Reese *moves* - a fifth, an octave,
+    a step towards the next chord - and a sub that moves has stopped being a
+    sub. This plays the root of whatever chord is sounding, in one octave, and
+    the only thing that varies is whether a chord is held as one long note or
+    struck again on the bar.
+
+    Two rules it cannot break, because breaking either is what wrecks a low end.
+    Nothing ever overlaps: a sub is one voice by definition, and two of them
+    sounding together sum into a mess no amount of mixing gets back. And nothing
+    is ever shorter than a beat - a short sub is a kick, and there is already
+    one of those. */
+NoteSequence writeSub(Context& ctx)
+{
+    NoteSequence out;
+    const auto& options = *ctx.options;
+
+    const int64_t minimumNote = std::max<int64_t>(1, ctx.beatTicks);
+
+    // How willing it is to strike the same note again inside one chord. At the
+    // bottom it is one held note per chord; turned up it re-articulates on the
+    // bar, which is what a sub under four-to-the-floor actually does.
+    const float restrike = std::clamp(options.density, 0.0f, 1.0f);
+
+    // The middle of the octave, as the reference every root is measured from.
+    // Not the last note played: a sub has no line to stay near, it has an
+    // octave, and every root has to land inside it.
+    const int centre = (ctx.lowPitch + ctx.highPitch) / 2;
+
+    for (const auto& segment : ctx.progression)
+    {
+        const int64_t start = segment.startTick;
+        const int64_t end = std::min(segment.endTick(), ctx.totalTicks);
+        if (end <= start)
+            continue;
+
+        const int pitch = clampPitch(nearestPitchWithClass(segment.chord.root, centre),
+                                     ctx.lowPitch, ctx.highPitch);
+
+        // How fine the grid of possible strikes is. Most chords last a single
+        // bar, so a grid of bar lines would leave the knob doing nothing at all
+        // for the common case - it has to reach inside the bar to mean anything.
+        // It stops at the beat: a sub re-articulating faster than that is a
+        // kick, and there is already one of those.
+        const int64_t stride = restrike > 0.75f ? std::max(minimumNote, ctx.beatTicks)
+                             : restrike > 0.50f ? std::max(minimumNote, ctx.barTicks / 2)
+                                                : ctx.barTicks;
+
+        // Where it strikes: the chord change always, and then whole bars either
+        // roll or hold, decided once each. Dropping individual beats at random
+        // does not sound like a bar that breathes - it sounds like a sub with a
+        // fault. The pitch is the same at every hit: what is being decided here
+        // is articulation, never harmony.
+        const float rolls = 0.2f + 0.75f * restrike;
+        std::vector<int64_t> hits { start };
+
+        if (stride < ctx.barTicks)
+        {
+            for (int64_t bar = start; bar < end; bar += ctx.barTicks)
+            {
+                if (! ctx.rng.chance(rolls))
+                    continue;
+
+                const int64_t barEnd = std::min(bar + ctx.barTicks, end);
+                for (int64_t hit = bar + stride; hit < barEnd; hit += stride)
+                    if (hit > start && hit + minimumNote <= end)
+                        hits.push_back(hit);
+            }
+        }
+        else if (restrike > 0.15f)
+        {
+            // A chord held for more than a bar can be struck again on the bar
+            // line without ever becoming busy.
+            for (int64_t hit = start + ctx.barTicks; hit + minimumNote <= end; hit += ctx.barTicks)
+                if (ctx.rng.chance(rolls))
+                    hits.push_back(hit);
+        }
+
+        hits.push_back(end);
+
+        for (size_t i = 0; i + 1 < hits.size(); ++i)
+        {
+            const int64_t noteStart = hits[i];
+            const int64_t noteEnd = hits[i + 1];
+            if (noteEnd - noteStart < minimumNote)
+                continue;
+
+            Note note;
+            note.startTick = noteStart;
+            // Ends exactly where the next begins. The writer puts a note-off
+            // before a note-on at the same tick, so a repeated root retriggers
+            // cleanly and two subs are never sounding at once.
+            note.lengthTick = noteEnd - noteStart;
+            note.pitch = pitch;
+            note.velocity = std::clamp(options.baseVelocity - (i == 0 ? 0 : 6), 1, 127);
+            note.channel = options.channel;
+            out.notes.push_back(note);
         }
     }
 
@@ -1503,6 +1619,7 @@ NoteSequence generate(const Analysis& analysis, const NoteSequence& source, cons
         case PartType::Arp:           out.notes = writeArp(ctx).notes; break;
         case PartType::Pluck:         out.notes = writePluck(ctx).notes; break;
         case PartType::Reese:         out.notes = writeReese(ctx).notes; break;
+        case PartType::Sub:           out.notes = writeSub(ctx).notes; break;
         case PartType::Melody:        out.notes = writeMelodicLine(ctx, false).notes; break;
         case PartType::CounterMelody: out.notes = writeMelodicLine(ctx, true).notes; break;
     }
@@ -1510,7 +1627,12 @@ NoteSequence generate(const Analysis& analysis, const NoteSequence& source, cons
     // A pad that drifts off the bar line just sounds late, so it only gets the
     // velocity half of the humanisation. A Reese is excluded for a harder
     // reason: nudging a start earlier eats the overlap the glide depends on.
-    humanise(ctx, out, options.part != PartType::Pad && options.part != PartType::Reese);
+    // The Reese is left alone because nudging a start earlier eats the overlap
+    // its glide depends on; the Sub because a fundamental that drifts off the
+    // downbeat fights the kick, which is the one thing it must not do.
+    humanise(ctx, out, options.part != PartType::Pad
+                    && options.part != PartType::Reese
+                    && options.part != PartType::Sub);
 
     for (auto& note : out.notes)
     {

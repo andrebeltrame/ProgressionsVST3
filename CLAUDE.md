@@ -182,6 +182,34 @@ glide from a note to itself is nothing to hear, and a second note-on for a pitch
 already sounding leaves the synth with two ons and two offs for one voice, so
 the first off cuts the note short. There is a test for each.
 
+### The Sub is not a lower Reese
+
+They look adjacent and they are not the same idea. The Reese *moves* - a fifth,
+an octave, a step towards the next chord - and that movement is the part. A sub
+that moves has stopped being a sub, so `writeSub` plays the root of whatever
+chord is sounding and nothing else, inside a single octave (`defaultRange` gives
+it 24..36, and the octave shift is the only thing that moves it). It is also the
+one part `adjustRangeForSource` deliberately leaves alone: every other part gets
+pushed out of the clip's way, and a sub pushed up to keep clear of a bassline is
+no longer doing its job.
+
+Two invariants, and both exist because breaking either is what wrecks a low end.
+**Nothing overlaps** - a sub is one voice by definition, and two sounding at once
+sum into something no mixing gets back - and nothing is shorter than a beat,
+because a short sub is a kick. `density` is the only option that does anything:
+it picks the strike grid (hold, half bar, beat) and then decides *per bar*
+whether that bar rolls. Per-beat randomness was tried and is wrong: a sub
+dropping single beats does not read as a bar that breathes, it reads as a fault.
+It is excluded from timing humanisation for the same reason the Reese is, but a
+different one: a fundamental that drifts off the downbeat fights the kick.
+
+`PartType::Sub` is appended to the enum rather than filed next to Bass and Reese
+where it belongs musically. The plugin stores the selected part as an index, so
+inserting one in the middle would reopen every saved project on a different
+part. The smoke test walks all `kNumParts` and checks each writes notes - a part
+added to the enum but missed in a `switch` comes out silent, and nothing else
+notices.
+
 ### A locked chord is locked everywhere
 
 `ProgressionsProcessor::lockedChords` is a decision about the session, not

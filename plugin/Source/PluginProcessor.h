@@ -39,7 +39,7 @@ constexpr const char* glide = "glide";
 } // namespace ParamID
 
 /** Every part the plugin can write, in the order the tabs show them. */
-static constexpr int kNumParts = 8;
+static constexpr int kNumParts = 9;
 
 /** The plugin: holds the analysis engine, renders the generated part and plays
     it back through MIDI out and a built-in preview voice. */
