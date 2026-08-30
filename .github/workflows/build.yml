@@ -179,19 +179,46 @@ jobs:
   release:
     name: Release
     needs: [engine, universal]
-    if: startsWith(github.ref, 'refs/tags/v')
+    # A manual run publishes too, not only a tag push. Pushing a tag needs
+    # credentials that the container this is developed from does not have, and
+    # without this the only way to a release was a download page that has to be
+    # hunted for behind a login. The token inside Actions can create the tag, so
+    # it does - from the version in CMakeLists.txt, which is the one the
+    # plug-in and the instructions already carry.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           name: universal-vst3
           path: artifacts
+
+      - name: Work out the tag
+        id: tag
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+              echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+              version=$(sed -n 's/.*project(Harmonia VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+              [ -n "$version" ] || { echo "No version in CMakeLists.txt" >&2; exit 1; }
+              echo "name=v${version}" >> "$GITHUB_OUTPUT"
+          fi
 
       # One download: the plug-in and its instructions.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: gh release create "${GITHUB_REF_NAME}" --generate-notes artifacts/*
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          # Re-running a build for a version already out replaces its files
+          # rather than failing, so a fix can be shipped under the same name.
+          if gh release view "$TAG" > /dev/null 2>&1; then
+              gh release upload "$TAG" artifacts/* --clobber
+          else
+              gh release create "$TAG" --target "$GITHUB_SHA" --generate-notes artifacts/*
+          fi
