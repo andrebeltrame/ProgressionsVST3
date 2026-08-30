@@ -86,4 +86,11 @@ ditto -c -k --keepParent "$PAYLOAD" "$OUT_DIR/Progressions-$VERSION.zip"
 cp "$ROOT/packaging/install-windows.ps1" "$OUT_DIR/install-windows.ps1"
 
 rm -rf "$PAYLOAD"
+
+# Say what actually went into the zip. Every round of "what is in this thing?"
+# so far has been answered by reading this script rather than by looking at what
+# it produced, and the two are only the same until they are not.
+echo "In the zip:"
+unzip -Z1 "$OUT_DIR/Progressions-$VERSION.zip" | awk -F/ 'NF<=2' | sed 's/^/  /'
+echo "Beside it:"
 ls -lh "$OUT_DIR"
