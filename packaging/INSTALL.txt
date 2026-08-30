@@ -5,7 +5,7 @@ Drop in a MIDI clip, or type a chord progression, and Progressions writes the
 parts that go with it: pads, melodies, counter melodies, basslines, arps and
 plucks. Point it at your own MIDI collection and it learns how you write.
 
-The .zip holds one plug-in, and it works on both macOS and Windows. A .vst3 is
+This .zip holds one plug-in, and it works on both macOS and Windows. A .vst3 is
 a folder, and the format is built to carry a binary for each system side by
 side - so there is nothing to choose between and nothing else to install.
 

@@ -16,8 +16,8 @@
 # CI calls this, and so can you when CI cannot: download the macos-build and
 # windows-build artifacts from the run page, then point this at them.
 #
-# Out of it come three things in <out-dir>: the zip, which holds the plug-in and
-# nothing else, and INSTALL.txt and install-windows.ps1 beside it.
+# Out of it come two things in <out-dir>: the zip, holding the plug-in and the
+# instructions, and install-windows.ps1 beside it.
 
 set -euo pipefail
 
@@ -69,26 +69,21 @@ file "$BUNDLE/Contents/x86_64-win/Progressions.vst3" | grep -q "PE32+"
 lipo -archs "$BUNDLE/Contents/MacOS/Progressions" | grep -q arm64
 lipo -archs "$BUNDLE/Contents/MacOS/Progressions" | grep -q x86_64
 
-# The zip is the plug-in and nothing else, because the zip is what gets
-# forwarded to somebody. A download that opens onto three items asks a question
-# nobody should have to answer - "which of these do I install?" - and the answer
-# was always the same one. Now it opens onto Progressions.vst3, and there is
-# nothing to choose.
+# Two things in the zip and no more: the plug-in, and the page that says where
+# to put it. The zip is what gets forwarded to somebody, and whoever opens it
+# should find what to install and how, without a third item asking to be
+# understood first.
 #
-# Note --keepParent points at the bundle rather than a folder holding it, so
-# unzipping produces the plug-in itself and not a folder with the plug-in in it.
-ditto -c -k --keepParent "$BUNDLE" "$OUT_DIR/Progressions-$VERSION.zip"
+# Stamped rather than typed, so the instructions cannot claim one version while
+# the plug-in beside them is another.
+sed "s/@VERSION@/$VERSION/" "$ROOT/packaging/INSTALL.txt" > "$PAYLOAD/INSTALL.txt"
+ditto -c -k --keepParent "$PAYLOAD" "$OUT_DIR/Progressions-$VERSION.zip"
 
-# The instructions and the Windows installer go beside the zip rather than
-# inside it. They are still one click away on the release page for whoever
-# needs them - every Windows failure so far has been silent, and the script is
-# what turns "it is not there" into something to read - and out of the way of
-# everyone who does not.
-#
-# The version is stamped rather than typed, so the instructions cannot claim one
-# version while the plug-in beside them is another.
+# The Windows installer goes beside the zip instead of inside it. It is one
+# click away on the release page for whoever hits trouble - every Windows
+# failure so far has been silent, and that script is what turns "it is not
+# there" into something to read - and out of the way of everyone who does not.
 cp "$ROOT/packaging/install-windows.ps1" "$OUT_DIR/install-windows.ps1"
-sed "s/@VERSION@/$VERSION/" "$ROOT/packaging/INSTALL.txt" > "$OUT_DIR/INSTALL.txt"
 
 rm -rf "$PAYLOAD"
 ls -lh "$OUT_DIR"
