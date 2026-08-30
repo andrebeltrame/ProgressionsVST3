@@ -36,8 +36,9 @@ public:
     NoteSequence generate(const GenerateOptions& generateOptions) const;
     std::vector<NoteSequence> generateVariations(const GenerateOptions& generateOptions, int count) const;
 
-    /** Replaces the detected progression with a reharmonised version. */
-    void applyReharmonization(uint32_t seed, float amount);
+    /** Replaces the detected progression with a reharmonised version. Chords
+        whose entry in `locked` is true are left exactly as they are. */
+    void applyReharmonization(uint32_t seed, float amount, const std::vector<bool>& locked = {});
     /** Restores the progression that was detected from the source clip, or the
         last one that was typed in if there is no clip. */
     void resetProgression();

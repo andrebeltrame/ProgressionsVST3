@@ -665,11 +665,18 @@ NoteSequence writeBass(Context& ctx)
 }
 
 /** A Reese: one sustained low voice that moves rather than a line that plays.
-    Held notes, not hits, and every note **overlaps the one before it** - that
-    overlap is the whole point. A mono synth only glides when the next note
-    starts while the last is still held, so a bassline written as separate notes
-    can never portamento however the synth is set. Anyone who wants that glide
-    automated later needs the MIDI to allow it in the first place. */
+    Held notes, not hits - nothing here is ever shorter than a beat, which is
+    what separates a Reese from the plucked bass next to it.
+
+    Two things vary. How many notes fill a chord: one long held note, or two or
+    three shorter ones, so the line breathes instead of changing once a bar
+    forever. And whether consecutive notes **overlap**, which is what
+    `GenerateOptions::glide` decides. A mono synth only portamentos when the
+    next note starts while the last is still held, so with glide on every note
+    reaches past the one after it and the MIDI allows a glide that can be
+    automated later. With glide off the notes end exactly where the next begins
+    - no two notes ever sound together, which is what a polyphonic patch needs
+    if the low end is not to sum and fight itself. */
 NoteSequence writeReese(Context& ctx)
 {
     NoteSequence out;
@@ -679,9 +686,13 @@ NoteSequence writeReese(Context& ctx)
     // design - a Reese that wanders stops being a bed - but never a flat drone.
     const float motion = std::clamp(options.density * 0.7f + options.complexity * 0.3f, 0.0f, 1.0f);
 
-    // Notes overlap by an eighth, or by whatever the shortest note allows, so
-    // consecutive notes are legato and the synth's glide has something to do.
-    const int64_t overlap = std::max<int64_t>(1, ctx.beatTicks / 2);
+    // With glide on, notes overlap by an eighth so the synth's portamento has
+    // something to work with. With it off the overlap is nothing at all.
+    const int64_t overlap = options.glide ? std::max<int64_t>(1, ctx.beatTicks / 2) : 0;
+
+    // Held, never plucked: whatever the subdivision works out to, no note in
+    // this part is allowed to come out shorter than a beat.
+    const int64_t minimumNote = std::max<int64_t>(1, ctx.beatTicks);
 
     const int root = ctx.lowPitch + 12;
     int previous = -1;
@@ -691,57 +702,108 @@ NoteSequence writeReese(Context& ctx)
         const auto& segment = ctx.progression[i];
         const Chord chord = segment.chord;
 
-        // Where the chord sits: nearest root to the last note, so the line
-        // moves by the smallest step it can and the glide stays short.
-        int pitch = nearestPitchWithClass(chord.root, previous >= 0 ? previous : root);
-        pitch = clampPitch(pitch, ctx.lowPitch, ctx.highPitch);
-
-        // One chord, one held note, sometimes two: the second is the small
-        // variation - a fifth, an octave, or a step up to the next root - late
-        // in the bar so it reads as a move towards the next chord.
-        const bool splits = motion > 0.25f && segment.lengthTick >= ctx.barTicks
-                            && ctx.rng.chance(0.25f + 0.45f * motion);
-
         const int64_t start = segment.startTick;
         const int64_t end = std::min(segment.endTick(), ctx.totalTicks);
         if (end <= start)
             continue;
 
-        const int64_t split = splits ? start + (end - start) * 2 / 3 : end;
+        // How many notes this chord gets. More movement means more of them, but
+        // only ever as many as can still be held for a beat each.
+        const int64_t span = end - start;
+        int pieces = 1;
+        if (span >= minimumNote * 2 && ctx.rng.chance(0.25f + 0.45f * motion))
+            pieces = 2;
+        if (pieces == 2 && span >= minimumNote * 3 && ctx.rng.chance(0.18f + 0.32f * motion))
+            pieces = 3;
 
-        Note first;
-        first.startTick = start;
-        // Reaches past its own chord so the next note starts over it.
-        first.lengthTick = split - start + overlap;
-        first.pitch = pitch;
-        first.velocity = std::clamp(options.baseVelocity - 4, 1, 127);
-        first.channel = options.channel;
-        out.notes.push_back(first);
-        previous = pitch;
-
-        if (splits)
+        // Where the cuts fall. Varying these is what makes one bar read as a
+        // long note with a late move and the next as two even halves.
+        std::vector<int64_t> edges { start };
+        if (pieces == 2)
         {
-            // The move: a fifth, an octave, or a step towards the chord ahead.
-            const auto tones = chord.pitchClasses();
-            int target = pitch;
-            const int roll = ctx.rng.range(0, 2);
-            if (roll == 0 && tones.size() > 2)
-                target = nearestPitchWithClass(tones[2], pitch);      // the fifth
-            else if (roll == 1 && pitch + 12 <= ctx.highPitch)
-                target = pitch + 12;                                   // the octave
-            else if (i + 1 < ctx.progression.size())
-                target = nearestPitchWithClass(ctx.progression[i + 1].chord.root, pitch);
+            static const int numerators[] = { 1, 2, 3 };
+            static const int denominators[] = { 2, 3, 4 };
+            const int pick = ctx.rng.range(0, 2);
+            edges.push_back(start + span * numerators[pick] / denominators[pick]);
+        }
+        else if (pieces == 3)
+        {
+            if (ctx.rng.chance(0.5f))
+            {
+                edges.push_back(start + span / 3);
+                edges.push_back(start + span * 2 / 3);
+            }
+            else
+            {
+                edges.push_back(start + span / 2);
+                edges.push_back(start + span * 3 / 4);
+            }
+        }
+        edges.push_back(end);
 
-            target = clampPitch(target, ctx.lowPitch, ctx.highPitch);
+        for (size_t piece = 0; piece + 1 < edges.size(); ++piece)
+        {
+            const int64_t noteStart = edges[piece];
+            const int64_t noteEnd = edges[piece + 1];
+            // The minimum is a rule about how this part is *subdivided*, not a
+            // reason to leave a chord silent: a chord shorter than a beat still
+            // gets its one note.
+            if (pieces > 1 && noteEnd - noteStart < minimumNote)
+                continue;
 
-            Note second;
-            second.startTick = split;
-            second.lengthTick = end - split + overlap;
-            second.pitch = target;
-            second.velocity = std::clamp(options.baseVelocity - 10, 1, 127);
-            second.channel = options.channel;
-            out.notes.push_back(second);
-            previous = target;
+            int pitch;
+            if (piece == 0)
+            {
+                // The chord itself: the nearest root to where the line already
+                // is, so it moves by the smallest step it can and any glide is
+                // short.
+                pitch = nearestPitchWithClass(chord.root, previous >= 0 ? previous : root);
+            }
+            else
+            {
+                // The move: a fifth, an octave, or a step towards the chord ahead.
+                const auto tones = chord.pitchClasses();
+                pitch = previous;
+                const int roll = ctx.rng.range(0, 2);
+                if (roll == 0 && tones.size() > 2)
+                    pitch = nearestPitchWithClass(tones[2], previous);
+                else if (roll == 1 && previous + 12 <= ctx.highPitch)
+                    pitch = previous + 12;
+                else if (i + 1 < ctx.progression.size())
+                    pitch = nearestPitchWithClass(ctx.progression[i + 1].chord.root, previous);
+            }
+
+            pitch = clampPitch(pitch, ctx.lowPitch, ctx.highPitch);
+
+            // With no glide to protect, a note may be released early so the
+            // line breathes - never below a beat, and never on the way into a
+            // note it is supposed to run into.
+            int64_t length = noteEnd - noteStart + overlap;
+            if (! options.glide && ctx.rng.chance(0.18f * motion))
+                length = std::max(minimumNote, (noteEnd - noteStart) * 3 / 4);
+
+            // Two runs of the same pitch that overlap are one held note, not
+            // two. A glide from a note to itself is nothing to hear, and the
+            // MIDI would be wrong either way: a second note-on for a pitch that
+            // is already sounding leaves the synth with two ons and two offs
+            // for one voice, and the first off cuts the note short.
+            if (! out.notes.empty() && out.notes.back().pitch == pitch
+                && out.notes.back().endTick() >= noteStart)
+            {
+                auto& held = out.notes.back();
+                held.lengthTick = std::max(held.lengthTick, noteEnd - held.startTick + overlap);
+                previous = pitch;
+                continue;
+            }
+
+            Note note;
+            note.startTick = noteStart;
+            note.lengthTick = length;
+            note.pitch = pitch;
+            note.velocity = std::clamp(options.baseVelocity - (piece == 0 ? 4 : 10), 1, 127);
+            note.channel = options.channel;
+            out.notes.push_back(note);
+            previous = pitch;
         }
     }
 
@@ -1484,7 +1546,8 @@ std::vector<NoteSequence> generateVariations(const Analysis& analysis,
     return out;
 }
 
-std::vector<ChordSegment> reharmonize(const Analysis& analysis, uint32_t seed, float amount)
+std::vector<ChordSegment> reharmonize(const Analysis& analysis, uint32_t seed, float amount,
+                                      const std::vector<bool>& locked)
 {
     std::vector<ChordSegment> out = analysis.progression;
     if (out.empty())
@@ -1499,6 +1562,11 @@ std::vector<ChordSegment> reharmonize(const Analysis& analysis, uint32_t seed, f
 
     for (size_t i = 0; i < out.size(); ++i)
     {
+        // A locked chord is left exactly as it is, and never draws from the
+        // rng, so locking one is not a silent way of changing another.
+        if (i < locked.size() && locked[i])
+            continue;
+
         if (! rng.chance(std::clamp(amount, 0.0f, 1.0f)))
             continue;
 

@@ -9,6 +9,7 @@
 #include "UI/PianoRollComponent.h"
 #include "UI/ProgressionStrip.h"
 #include "UI/ProgressionsLookAndFeel.h"
+#include "UI/SpeakerButton.h"
 
 class ProgressionsEditor : public juce::AudioProcessorEditor,
                        public juce::FileDragAndDropTarget,
@@ -50,10 +51,15 @@ private:
     void showStyleMenu();
     void showScanDialog();
     void showStyleDialog();
+    void showFavouritesMenu();
     void applyTypedProgression();
     void applyKeyFromControls();
     void refreshProgressionField();
     void refreshPartButtons();
+    /** Keeps the level slider saying the same thing as the speaker beside
+        it - a full green track next to a muted speaker reads as a
+        contradiction. */
+    void refreshPreviewRow();
     bool preferFlats() const;
 
     ProgressionsProcessor& processor;
@@ -62,6 +68,7 @@ private:
 
     juce::Label titleLabel, taglineLabel, sourceLabel, statusLabel;
     juce::TextButton loadButton { "Load MIDI..." }, clearButton { "Clear clip" };
+    juce::TextButton surpriseButton { "Surprise me" };
     juce::TextButton initButton { "Init" };
     juce::Label versionLabel;
     /** The header block that opens the about card - kept from resized() so
@@ -98,19 +105,25 @@ private:
     juce::ToggleButton followToggle { "Follow groove" };
     juce::ToggleButton avoidToggle { "Stay clear" };
     juce::ToggleButton syncToggle { "Host sync" };
-    juce::ToggleButton previewToggle { "Preview sound" };
+    /** The built-in sound: an icon that shows its own state, because
+        whether the plug-in or your own instrument is making the noise is
+        the one thing here you need to read without stopping to read. */
+    SpeakerButton previewButton;
     juce::Slider levelSlider;
-    juce::Label levelLabel { {}, "Preview level" };
+    juce::Label levelLabel { {}, "Preview sound" };
     juce::TextButton styleButton { "Learn from my library..." };
     juce::ToggleButton styleToggle { "Write in my style" };
-    juce::ToggleButton stackToggle { "Stack parts" };
+    juce::ToggleButton stackToggle { "Play all sequences" };
+    juce::ToggleButton glideToggle { "Glide (overlap notes)" };
+    juce::TextButton favouritesButton { "My favourites..." };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> lengthAttachment, arpAttachment,
                                                                             harmonyAttachment, meterAttachment,
                                                                             accidentalAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> followAttachment, avoidAttachment,
                                                                           syncAttachment, previewAttachment,
-                                                                          styleAttachment, stackAttachment;
+                                                                          styleAttachment, stackAttachment,
+                                                                          glideAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> levelAttachment;
 
     juce::TextButton diceButton { "New idea" }, reharmButton { "Reharmonise" },

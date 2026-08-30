@@ -91,6 +91,16 @@ struct GenerateOptions
     int baseVelocity = 96;
 
     ArpPattern arpPattern = ArpPattern::UpDown;
+
+    /** Reese only: let every note run past the start of the next one.
+        A monophonic synth portamentos only between overlapping notes, so the
+        MIDI has to allow the glide before any synth can play it. The cost is
+        that on a *polyphonic* patch those two low notes really do sound at
+        once for an eighth - they sum, they fight in the low end and they eat
+        headroom. Turned off, each note ends where the next begins: nothing
+        overlaps, nothing sums, and no glide is possible either. */
+    bool glide = true;
+
     /** Repeat the analysed progression until this many bars are filled. 0 = source length. */
     int bars = 0;
 };
@@ -105,8 +115,14 @@ std::vector<NoteSequence> generateVariations(const Analysis& analysis,
                                              int count);
 
 /** Suggests an alternative progression over the same bars (secondary dominants,
-    relative substitutions, modal interchange, tritone subs). */
-std::vector<ChordSegment> reharmonize(const Analysis& analysis, uint32_t seed, float amount);
+    relative substitutions, modal interchange, tritone subs).
+
+    `locked` is read in step with the progression: any chord whose entry is true
+    is left exactly as it is, so the two chords you already like survive a
+    reharmonisation of everything around them. A shorter vector locks nothing
+    beyond its end. */
+std::vector<ChordSegment> reharmonize(const Analysis& analysis, uint32_t seed, float amount,
+                                      const std::vector<bool>& locked = {});
 
 /** Default register for a part, used when lowPitch/highPitch are left at -1. */
 void defaultRange(PartType part, int& lowPitch, int& highPitch);

@@ -5,6 +5,8 @@
 #include "harmonia/Presets.h"
 #include "harmonia/Progression.h"
 
+#include <set>
+
 using namespace harmonia;
 
 namespace
@@ -261,4 +263,49 @@ TEST(ApplyingAPresetKeepsTheTonic)
 
     CHECK(! engine.applyPreset("does-not-exist", error));
     CHECK(! error.empty());
+}
+
+TEST(AnInventedProgressionIsDiatonicAndRepeatable)
+{
+    const Key key { 9, ScaleType::NaturalMinor }; // A minor
+
+    const auto first = inventProgression(key, 1234u, 4);
+    CHECK(first.size() == 4);
+
+    // With no library it walks the key's own harmony, so every chord has to be
+    // one of the seven degrees - a surprise that leaves the key is a bug.
+    const auto triads = diatonicTriads(key);
+    for (const auto& chord : first)
+    {
+        bool found = false;
+        for (const auto& triad : triads)
+            found = found || (triad.root == chord.root && triad.type == chord.type);
+        CHECK(found);
+    }
+
+    // Same seed, same idea - the whole reproducibility story depends on it.
+    const auto again = inventProgression(key, 1234u, 4);
+    CHECK(roots(again) == roots(first));
+
+    // A different seed has to be a different idea at least most of the time.
+    int differing = 0;
+    for (uint32_t seed = 1; seed <= 12; ++seed)
+        if (roots(inventProgression(key, seed, 4)) != roots(first))
+            ++differing;
+    CHECK(differing >= 8);
+}
+
+TEST(AnInventedKeyIsRepeatable)
+{
+    const auto key = inventKey(99u);
+    const auto again = inventKey(99u);
+    CHECK(key.tonic == again.tonic);
+    CHECK(key.scale == again.scale);
+    CHECK(key.tonic >= 0 && key.tonic <= 11);
+
+    // And it does not always hand back the same key.
+    std::set<int> tonics;
+    for (uint32_t seed = 1; seed <= 40; ++seed)
+        tonics.insert(inventKey(seed).tonic);
+    CHECK(tonics.size() >= 5);
 }

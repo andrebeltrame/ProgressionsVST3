@@ -399,6 +399,98 @@ int main(int argc, char** argv)
         libraryFolder.deleteRecursively();
     }
 
+    // ---- Locked chords --------------------------------------------------------
+    {
+        processor.resetProgression();
+        processor.setProgressionText("Am | F | C | G");
+        const auto before = processor.getEngine().analysis().progressionString();
+
+        processor.toggleChordLock(0);
+        processor.toggleChordLock(2);
+        check(processor.isChordLocked(0) && processor.isChordLocked(2), "chords can be pinned");
+        check(! processor.isChordLocked(1), "and the others are not");
+
+        // A pinned chord does not move, however you push at it.
+        processor.nudgeChord(0, 1);
+        check(processor.getEngine().analysis().progression[0].chord.root == 9,
+              "clicking a pinned chord leaves it alone");
+
+        processor.reharmonize(1.0f);
+        const auto& after = processor.getEngine().analysis().progression;
+        check(after.size() == 4, "reharmonisation keeps the number of chords");
+        check(after[0].chord.root == 9, "the first pinned chord survived");
+        check(after[2].chord.root == 0, "and so did the third");
+        check(processor.getEngine().analysis().progressionString() != before,
+              "while the free ones did change");
+
+        processor.undo();
+
+        // Typing a new progression means new slots, so the old pins go.
+        processor.setProgressionText("Dm | Bb | F | C");
+        check(! processor.isChordLocked(0), "typing new chords clears the pins");
+    }
+
+    // ---- Surprise me ----------------------------------------------------------
+    {
+        const auto seedBefore = processor.getSeed();
+
+        processor.surpriseMe();
+        check(processor.getSeed() != seedBefore, "a surprise rolls a new seed");
+        check(processor.getEngine().analysis().valid, "and leaves a valid analysis");
+        check(processor.getEngine().analysis().progression.size() >= 4,
+              "with a progression to write over");
+        check(! processor.getGeneratedSequence().empty(), "and a part written on it");
+        check(processor.isKeyForced(), "the key it picked is pinned, so it can be read");
+
+        // Pinned chords survive a surprise too - that is the point of pinning one.
+        processor.toggleChordLock(1);
+        const auto kept = processor.getEngine().analysis().progression[1].chord;
+        processor.surpriseMe();
+        check(processor.getEngine().analysis().progression[1].chord.root == kept.root
+                  && processor.getEngine().analysis().progression[1].chord.type == kept.type,
+              "a pinned chord survives a surprise");
+        processor.toggleChordLock(1);
+    }
+
+    // ---- Favourites -----------------------------------------------------------
+    {
+        // The style folder is redirected for this run, so the favourites and
+        // their MIDI land in the temp folder with it and no real one is touched.
+        processor.reloadFavourites();
+        const auto countBefore = processor.favouriteList().size();
+
+        check(processor.saveFavourite(), "a favourite is kept");
+        check(processor.favouriteList().size() == countBefore + 1, "and turns up in the list");
+
+        const auto name = processor.favouriteList().back().name;
+        check(name.isNotEmpty(), "with a name that says what it is");
+
+        const juce::File folder(processor.favouriteList().back().folder);
+        check(folder.isDirectory(), "and a folder of MIDI beside it");
+        check(folder.findChildFiles(juce::File::findFiles, false, "*.mid").size() > 0,
+              "with a file per part in it");
+
+        // A second instance has to see it: favourites are global, not per project.
+        ProgressionsProcessor other;
+        other.reloadFavourites();
+        bool found = false;
+        for (const auto& entry : other.favouriteList())
+            found = found || entry.name == name;
+        check(found, "another instance sees the same favourites");
+
+        // Recalling one puts the idea back exactly.
+        const auto chords = processor.getEngine().analysis().progressionString();
+        processor.surpriseMe();
+        processor.recallFavourite(static_cast<int>(processor.favouriteList().size()) - 1);
+        check(processor.getEngine().analysis().progressionString() == chords,
+              "recalling a favourite brings the chords back");
+
+        check(processor.deleteFavourite(static_cast<int>(processor.favouriteList().size()) - 1),
+              "a favourite can be forgotten");
+        check(processor.favouriteList().size() == countBefore, "and leaves the list as it was");
+        check(folder.isDirectory(), "but its MIDI files are left alone");
+    }
+
     // ---- State round trip ----------------------------------------------------
     juce::MemoryBlock state;
     processor.getStateInformation(state);
@@ -443,6 +535,10 @@ int main(int argc, char** argv)
 
     // ---- Editor ---------------------------------------------------------------
     {
+        // Pin one chord before rendering, so the picture shows both states of
+        // the padlock rather than four identical chips.
+        processor.toggleChordLock(1);
+
         std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
         check(editor != nullptr, "editor is created");
 

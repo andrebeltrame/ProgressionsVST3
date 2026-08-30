@@ -64,6 +64,7 @@ target_sources(Progressions PRIVATE
     Source/PluginEditor.cpp
     Source/LibraryScan.cpp
     Source/StyleStore.cpp
+    Source/Favourites.cpp
     Source/UI/ProgressionsLookAndFeel.cpp
     Source/UI/PianoRollComponent.cpp
     Source/UI/ProgressionStrip.cpp

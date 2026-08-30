@@ -54,7 +54,7 @@ atualizar, conferir, aprender a coleção, compartilhar.
 | **Melody** | Linha construída sobre um motivo curto e **trabalhado** ao longo da frase: inversão, retrógrado, fragmentação e notas de passagem, com arco de altura (segura, sobe, pico, assenta). O botão **Craft** dosa o quanto. |
 | **Counter** | Igual à melodia, mas empurrada para movimento contrário ao do clipe e proibida de dobrar as suas notas. |
 | **Bass** | Fundamental com quintas, oitavas e aproximações cromáticas para o próximo acorde. Sincopado, seguindo o groove. |
-| **Reese** | Uma voz grave sustentada em vez de uma linha tocada: notas longas, retas, uma por acorde — às vezes duas, quando a segunda empurra para o acorde seguinte com uma quinta, uma oitava ou um passo. **Cada nota se sobrepõe à anterior**, e isso não é detalhe: um synth mono só faz portamento quando a nota nova começa com a anterior ainda soando. Sem essa sobreposição no MIDI, nenhum ajuste de glide no sintetizador funciona. Fica uma oitava abaixo do Bass. |
+| **Reese** | Uma voz grave sustentada em vez de uma linha tocada. As durações variam: um acorde pode ficar numa nota longa só ou ser dividido em duas ou três mais curtas — nunca abaixo de um tempo, senão vira pluck e não Reese. As notas que se movem vão para a quinta, para a oitava ou para um passo em direção ao próximo acorde. O interruptor **Glide** decide o resto: ligado, cada nota se sobrepõe à seguinte, que é a única forma de um synth mono fazer portamento — sem essa sobreposição no MIDI, nenhum ajuste de glide no sintetizador funciona. Desligado, cada nota termina exatamente onde a próxima começa: nada se sobrepõe, nada soma no grave, que é o que um patch **polifônico** precisa. Fica uma oitava abaixo do Bass. |
 | **Arp** | Notas do acorde em Up / Down / Up-Down / Down-Up / Converge / Random. A corrida em si continua regular — uma corrida embaralhada deixa de ser arpejo — mas **New idea** troca a figura por cima dela: onde a corrida começa, até onde ela alcança, se os ciclos sobem uma oitava e onde ela respira. Os acentos seguem o groove que estiver embaixo. |
 | **Pluck** | Notas curtas do acorde em cima do groove, com saltos e oitavas dobradas nos acentos — o pluck de house. |
 
@@ -72,10 +72,24 @@ secundárias, substituições de trítono e empréstimo modal. Cada acorde tamb�
 pode ser empurrado na mão: clique no chip para subir um grau, botão direito para
 descer.
 
+**Acordes travados** — clique no cadeado no canto do chip e aquele acorde para
+de mudar: **Reharmonise** e **Surprise me** escrevem em volta dele e o clique
+que sobe um grau também passa direto. É como segurar os dois acordes que já
+estão bons e girar o resto até o resto acompanhar.
+
+**Surprise me** — ao lado do *Load MIDI*, e responde à mesma pergunta pelo outro
+lado: um tira a harmonia de um clipe que você tem, o outro inventa uma quando
+você não tem nada. Escolhe a tonalidade, o modo e uma progressão que funciona
+nela, rola uma semente nova e escreve a parte. Com uma biblioteca aprendida ele
+sorteia entre os *loops de graus* que a sua própria coleção toca, ponderados
+pela frequência — são numerais romanos e uma contagem, nada do material
+original vem junto. Sem biblioteca nenhuma ele caminha pela harmonia funcional
+da tonalidade, que é o caminho que precisa funcionar numa instalação nova.
+
 **Partes empilhadas** — o plugin guarda todas as partes que você escreveu e toca
 todas juntas, **cada uma no seu próprio canal MIDI**: pad no 1, chords no 2,
-melody no 3, e assim por diante. O número do canal aparece na aba da parte.
-Desligue **Stack parts** para voltar a ouvir só a parte selecionada.
+melody no 3, e assim por diante. Desligue **Play all sequences** para voltar a
+ouvir só a parte selecionada.
 
 Uma ressalva que importa se você usa **Ableton Live**: o Live descarta o canal
 MIDI ao rotear de um plugin para outra pista — canal só significa alguma coisa
@@ -93,12 +107,21 @@ que não toca mais.
 **Desfazer** — um passo atrás em qualquer coisa da tela: um botão, os acordes
 que você digitou, um preset, uma reharmonização, uma parte removida.
 
+**Favoritos** — quando a combinação ficou boa, **My favourites... → Keep this
+one**. Ela vai para a pasta do próprio plugin, não para o projeto, então aparece
+em qualquer set que você abrir depois. Como a geração é determinística, o que
+fica guardado é a semente mais os ajustes — alguns bytes — e voltar num favorito
+devolve as partes vivas e ainda ajustáveis, não um clipe renderizado. Junto vai
+uma pasta com **um MIDI por parte**, em `~/Music/Progressions/`, para quando o
+que você quer é o arquivo na mão e não o plugin.
+
 **Saída** — arraste o resultado direto para a timeline do DAW, salve como `.mid`,
 ou use a saída MIDI do plugin para tocar num instrumento seu. O arquivo escrito
 declara o **loop**, não a última nota: um loop de 4 compassos entra como um clipe
 de 4 compassos mesmo que o pad estivesse segurando uma nota na virada. Tem um
 sintetizador de preview embutido para ouvir sem ligar nada, com um timbre
-diferente por parte.
+diferente por parte — o alto-falante ao lado do volume mostra se ele está
+ligado, e riscado quando o som está saindo só pelos seus instrumentos.
 
 ---
 
@@ -574,11 +597,11 @@ Detalhes que valem saber:
   Counter.
 - **Chord changes** força a grade harmônica. Em *Auto* o plugin decide; se ele
   achar um acorde só num lead que você sabe que tem quatro, force *1 per bar*.
-- **Stack parts** toca todas as partes escritas ao mesmo tempo, cada uma no seu
+- **Play all sequences** toca todas as partes escritas ao mesmo tempo, cada uma no seu
   canal MIDI. No Live, para mandar a saída MIDI para outro instrumento: na pista
   de destino, *MIDI From* → a pista do Progressions, e no seletor de baixo
   escolha **Progressions** (o plugin), com Monitor em **In**. Como o Live junta
-  os canais, faça isso com **Stack parts desligado**, uma parte por vez.
+  os canais, faça isso com **Play all sequences** desligado, uma parte por vez.
 - **Remove part** para de guardar a parte atual; as outras continuam tocando.
 - **Undo** volta um passo em qualquer ajuste da tela.
 - **Spelling** decide se as notas e os acordes aparecem com sustenido ou bemol.
@@ -588,6 +611,22 @@ Detalhes que valem saber:
   arquivo que você carregou, e é 4/4 quando não há arquivo. Se um clipe declara
   3/4 mas toca 4/4, é aqui que você discorda dele.
 - **Reharm** dosa o quanto o botão **Reharmonise** reescreve da progressão.
+- **O cadeado** no canto de cada acorde o congela: **Reharmonise** e **Surprise
+  me** passam por cima dele sem tocar, e o clique que sobe um grau também. Serve
+  para segurar o que já está bom e girar só o resto.
+- **Surprise me** inventa tudo do zero — tonalidade, modo, progressão e semente
+  — e escreve a parte selecionada. Com biblioteca aprendida, sorteia entre os
+  loops de graus que a sua coleção realmente toca.
+- **Glide** só existe para o **Reese**. Ligado, as notas se encavalam, que é a
+  única forma de um synth **mono** fazer portamento entre elas. Desligado, cada
+  nota termina onde a próxima começa — nada soma no grave, que é o que um patch
+  **polifônico** precisa.
+- **O alto-falante** ao lado do volume liga e desliga o som interno do plugin, e
+  mostra qual dos dois está valendo. Riscado quem toca são os seus instrumentos;
+  o MIDI continua saindo dos dois jeitos.
+- **My favourites…** guarda a combinação atual na pasta do plugin — global, vale
+  em qualquer projeto — e escreve um MIDI por parte em `~/Music/Progressions/`.
+  *Forget one* tira da lista e **deixa os MIDIs onde estão**.
 - A **semente** aparece no painel: mesma semente + mesmos controles = exatamente
   a mesma ideia, sempre. Ela é salva no projeto, junto com o clipe e a progressão.
 

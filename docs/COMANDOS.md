@@ -134,6 +134,14 @@ Gerar ideias sem abrir nada:
 ./build/cli/harmonia-cli --preset melodic-lift --key "F minor" --style ~/melodic.style.json --part bass,melody,pluck --out ~/ideias
 ```
 
+O Reese sai com as notas encavaladas, que é o que faz o portamento de um synth
+mono funcionar. Num patch **polifônico** isso soma duas notas graves ao mesmo
+tempo — se for o seu caso, peça sem sobreposição:
+
+```bash
+./build/cli/harmonia-cli resources/examples/bass_loop.mid --part reese --no-glide --out ~/ideias
+```
+
 ---
 
 ## Compartilhar
@@ -224,7 +232,7 @@ pista do instrumento dela.
 
 **Saída MIDI ao vivo, uma parte por vez.**
 
-1. Desligue **Stack parts** no Progressions — senão as partes chegam somadas.
+1. Desligue **Play all sequences** no Progressions — senão as partes chegam somadas.
 2. Na pista do instrumento de destino: *MIDI From* → a pista do Progressions.
 3. No seletor logo abaixo, escolha **Progressions** (o plugin), e não
    *Track In* / *Pre FX* / *Post FX*.

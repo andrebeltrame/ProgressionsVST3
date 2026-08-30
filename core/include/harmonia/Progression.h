@@ -30,6 +30,27 @@ std::string progressionToRoman(const std::vector<Chord>& chords, const Key& key)
     tonic candidate and the chord tones as the scale. */
 Key guessKeyForProgression(const std::vector<Chord>& chords);
 
+struct StyleModel;
+
+/** Picks a key to write in out of nothing - the tonic uniformly, the mode
+    weighted towards the ones this plugin is actually used in. */
+Key inventKey(uint32_t seed);
+
+/** Invents a progression with no clip and nothing typed: the harmony behind
+    "Surprise me".
+
+    With a style model it draws on the roman-numeral loops learned from your own
+    collection, weighted by how often each turned up, and reads them in `key` -
+    so a surprise still sounds like your records. Those loops are numerals, not
+    anyone's notes: nothing of the original material comes across. Without a
+    model, or when the learned loop will not fit, it walks the functional
+    harmony of the key instead, which is what keeps this working with no library
+    at all.
+
+    Deterministic: the same seed and key always invent the same progression. */
+std::vector<Chord> inventProgression(const Key& key, uint32_t seed, int length,
+                                     const StyleModel* style = nullptr);
+
 /** Builds a playable Analysis from chords alone - no source clip needed. */
 Analysis analysisFromProgression(const std::vector<Chord>& chords,
                                  const Key& key,

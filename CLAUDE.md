@@ -158,15 +158,87 @@ pad and a lead — plus the tests, before and after.
 
 `docs/COMO_FUNCIONA.md` explains why each of these exists.
 
-### The Reese overlaps on purpose
+### The Reese overlaps on purpose, but only when asked
 
 `writeReese` is the only generator whose notes deliberately run into each other:
-each note reaches an eighth past where the next one starts. A monophonic synth
-only portamentos between overlapping notes, so a bassline written as separate
-notes can never glide however the synth is patched - the MIDI has to allow it.
-That is also why the Reese is excluded from timing humanisation in `generate()`:
-nudging a start earlier eats the overlap. Anything that shortens or shifts notes
-has to leave this part alone.
+with `GenerateOptions::glide` set, each note reaches an eighth past where the
+next one starts. A monophonic synth only portamentos between overlapping notes,
+so a bassline written as separate notes can never glide however the synth is
+patched - the MIDI has to allow it. That is also why the Reese is excluded from
+timing humanisation in `generate()`: nudging a start earlier eats the overlap.
+Anything that shortens or shifts notes has to leave this part alone.
+
+The overlap is not free, which is why it is a switch rather than a rule. On a
+*polyphonic* patch those two low notes really do sound together for an eighth:
+they sum, they fight in the low end and they eat headroom. With `glide` off the
+notes end exactly where the next begins - nothing overlaps, nothing sums, and no
+glide is possible either. Both are correct; which one is depends on the synth.
+
+Two rules the part cannot break, whichever way the switch is set. Nothing is
+ever shorter than a beat - that is the line between a Reese and the plucked bass
+next to it, and it holds however many pieces a chord is cut into. And two runs
+of the **same pitch** that touch or overlap are merged into one held note: a
+glide from a note to itself is nothing to hear, and a second note-on for a pitch
+already sounding leaves the synth with two ons and two offs for one voice, so
+the first off cuts the note short. There is a test for each.
+
+### A locked chord is locked everywhere
+
+`ProgressionsProcessor::lockedChords` is a decision about the session, not
+something the clip said, so it lives in the processor rather than in the
+`Analysis`. It means one thing and the same thing in all three places a chord
+can change: `reharmonize()` skips it (and does not draw from the rng for it, so
+locking one is not a silent way of changing another), `surpriseMe()` copies it
+back over the invented progression, and `nudgeChord()` returns early. A lock
+honoured by two paths out of three would be worse than no lock at all.
+
+The list is cleared whenever the progression is replaced wholesale - a typed
+progression, a preset, a reset, a loaded clip - because slot 2 of the new chords
+is not the slot 2 that was locked. It survives a reharmonisation, a nudge and a
+surprise, which all keep the same slots.
+
+### Surprise me invents, it does not sample
+
+`inventProgression()` (core/src/Progression.cpp) has two paths and needs both.
+With a style model it picks one of the learned roman-numeral loops, weighted by
+how often it turned up, and reads it in the invented key - so a surprise sounds
+like the user's own records. Those loops are numerals and a count, which is the
+same reason the style model as a whole carries no one's material. Without a
+model, or when the learned loop will not parse, it walks the key's own functional
+harmony with the two transition tables in that file. The second path is not a
+fallback to be tidied away later: it is what has to work on a fresh installation
+with nothing learned.
+
+The plugin's `surpriseMe()` pins the key it chose rather than leaving it on
+Auto. A surprise you cannot read the key of is half an answer, and the roman
+numerals under the chips only mean anything against a key that is actually set.
+
+### Favourites belong to the installation, not to the project
+
+`plugin/Source/Favourites.cpp` keeps them next to the style model, in
+`styleStore::directory()`, for the same reason the style model lives there: a
+favourite is something the user found, and finding it again must not depend on
+which set happened to be open. `favourites::midiFolder()` follows
+`HARMONIA_STYLE_DIR` when it is set, so the smoke test never writes into a real
+Music folder.
+
+What is stored is the plugin's state tree, not the notes. Generation is
+deterministic, so the state *is* the music - it comes back to the tick, live and
+still adjustable, for a few hundred bytes. `deleteFavourite()` removes the entry
+and deliberately leaves the exported MIDI where it is: those are the user's files
+in the user's music folder, and deleting files nobody asked us to delete is not
+something this does quietly.
+
+### A preset takes its own mode, and the key has to follow
+
+`Engine::applyPreset` switches to the mode the preset was written for - "vi IV I
+V" only means anything in a major key. When `options.forceKey` is set it has to
+update `options.key` too, or the analysis says one thing and the options another:
+the next `reanalyse()` reads the same numerals in the old mode and hands back
+different chords. The plugin mirrors the new mode back into `keyScale` for the
+same reason - otherwise the saved state reopens the project on a different
+progression. This surfaced the day `surpriseMe()` started pinning keys, and the
+smoke test's "including the exact chords" is what catches it.
 
 ### The pad anchors, and never overwrites
 

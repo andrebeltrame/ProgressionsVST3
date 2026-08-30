@@ -124,6 +124,12 @@ bool Engine::applyPreset(const std::string& presetId, std::string& error)
     if (! parseProgression(preset->numerals, key, chords, error))
         return false;
 
+    // A pinned key has to follow the preset's mode, or the analysis ends up
+    // saying one thing and the options another: the next reanalyse would read
+    // the same numerals in the old mode and quietly hand back different chords.
+    if (options.forceKey)
+        options.key = key;
+
     writtenChords = std::move(chords);
     writtenProgression = true;
     writtenText = progressionToText(writtenChords);
@@ -168,11 +174,11 @@ std::vector<NoteSequence> Engine::generateVariations(const GenerateOptions& gene
     return harmonia::generateVariations(currentAnalysis, sourceSequence, generateOptions, count);
 }
 
-void Engine::applyReharmonization(uint32_t seed, float amount)
+void Engine::applyReharmonization(uint32_t seed, float amount, const std::vector<bool>& locked)
 {
     if (! currentAnalysis.valid)
         return;
-    currentAnalysis.progression = harmonia::reharmonize(currentAnalysis, seed, amount);
+    currentAnalysis.progression = harmonia::reharmonize(currentAnalysis, seed, amount, locked);
 }
 
 void Engine::resetProgression()

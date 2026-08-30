@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include "Favourites.h"
 #include "LibraryScan.h"
 #include "PreviewSynth.h"
 #include "RenderedPart.h"
@@ -34,6 +35,7 @@ constexpr const char* stackParts = "stackParts";
 constexpr const char* accidentals = "accidentals";
 constexpr const char* meter = "meter";
 constexpr const char* reharmAmount = "reharmAmount";
+constexpr const char* glide = "glide";
 } // namespace ParamID
 
 /** Every part the plugin can write, in the order the tabs show them. */
@@ -111,10 +113,36 @@ public:
     void setSeed(juce::uint32 newSeed);
 
     void reharmonize(float amount);
+    /** A whole idea out of nothing: a key, a progression that works in it and a
+        new seed. Chords you have locked are kept. */
+    void surpriseMe();
     /** The reharmonisation strength the UI is set to. */
     float reharmonizeAmount() const;
     void resetProgression();
     void nudgeChord(int index, int direction);
+
+    // --- Locked chords --------------------------------------------------------
+    /** A locked chord is one you have decided on: Reharmonise and Surprise me
+        write around it, and clicking it no longer walks it up a degree. */
+    bool isChordLocked(int index) const;
+    void toggleChordLock(int index);
+    /** In step with the progression, for the strip to draw. */
+    std::vector<bool> chordLocks() const;
+    bool hasLockedChords() const;
+
+    // --- Favourites -----------------------------------------------------------
+    /** Keeps this combination: the state that reproduces it goes in the plug-in's
+        own folder, so it is there in every project, and one MIDI file per live
+        part is written to `favouritesMidiFolder()`. Returns false and sets the
+        error text if either could not be written. */
+    bool saveFavourite();
+    bool recallFavourite(int index);
+    bool deleteFavourite(int index);
+    const std::vector<favourites::Entry>& favouriteList() const noexcept { return favouriteEntries; }
+    void reloadFavourites();
+    static juce::File favouritesMidiFolder();
+    /** What a favourite saved now would be called - the name the menu offers. */
+    juce::String describeCurrentIdea() const;
 
     /** Types a progression in over whatever is loaded: "Am | F | C | G" or
         "i VI III VII". Returns false and sets the error text if it will not parse. */
@@ -210,6 +238,9 @@ private:
     /** Rebuilds the sounding mix from whichever parts are live. */
     void republishParts();
     void pushUndoState(bool discrete);
+    /** Keeps the lock list the same length as the progression: chords that
+        appear start unlocked, and locks past the end are forgotten. */
+    void resizeChordLocks();
     void captureSettledState();
     juce::ValueTree stateTree();
     void applyStateTree(const juce::ValueTree& tree);
@@ -233,6 +264,12 @@ private:
         parts no longer belong to the pad that is playing. */
     std::array<juce::uint32, kNumParts> partPadStamp { };
     juce::uint32 padStamp = 0;
+
+    /** Chords the user pinned, in step with the progression. Kept here rather
+        than in the analysis because it is a decision about the session, not
+        something the clip says. */
+    std::vector<bool> lockedChords;
+    std::vector<favourites::Entry> favouriteEntries;
 
     std::vector<juce::MemoryBlock> undoStack;
     juce::MemoryBlock settledState;

@@ -4,6 +4,8 @@
 #include "StyleStore.h"
 
 #include "harmonia/MidiFile.h"
+#include "harmonia/Progression.h"
+#include "harmonia/Rng.h"
 #include "harmonia/StyleModel.h"
 
 using namespace harmonia;
@@ -110,13 +112,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout ProgressionsProcessor::creat
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { ParamID::useStyle, 1 }, "Use My Style", true));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { ParamID::styleAmount, 1 }, "Style Amount",
                                                      NormalisableRange<float> { 0.0f, 1.0f }, 1.0f, percentAttributes));
-    layout.add(std::make_unique<AudioParameterBool>(ParameterID { ParamID::stackParts, 1 }, "Stack Parts", true));
+    // The id stays "stackParts": changing it would silently lose the setting in
+    // every project already saved with it. Only what the user reads changes.
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { ParamID::stackParts, 1 },
+                                                    "Play All Sequences", true));
     layout.add(std::make_unique<AudioParameterChoice>(ParameterID { ParamID::accidentals, 1 }, "Accidentals",
                                                       kAccidentalChoices, 0));
     layout.add(std::make_unique<AudioParameterChoice>(ParameterID { ParamID::meter, 1 }, "Time Signature",
                                                       kMeterChoices, 0));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { ParamID::reharmAmount, 1 }, "Reharmonise Amount",
                                                      NormalisableRange<float> { 0.0f, 1.0f }, 0.5f, percentAttributes));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { ParamID::glide, 1 }, "Reese Glide", true));
 
     return layout;
 }
@@ -129,7 +135,8 @@ ProgressionsProcessor::ProgressionsProcessor()
                             ParamID::swing, ParamID::develop, ParamID::octave, ParamID::voices, ParamID::bars,
                             ParamID::follow, ParamID::avoid, ParamID::arpPattern,
                             ParamID::harmonicRhythm, ParamID::useStyle, ParamID::styleAmount,
-                            ParamID::stackParts, ParamID::accidentals, ParamID::meter })
+                            ParamID::stackParts, ParamID::accidentals, ParamID::meter,
+                            ParamID::glide })
         apvts.addParameterListener(id, this);
 
     previewSynth.addSound(new PreviewSound());
@@ -139,6 +146,7 @@ ProgressionsProcessor::ProgressionsProcessor()
     seed = static_cast<juce::uint32>(juce::Random::getSystemRandom().nextInt(1000000) + 1);
 
     loadDefaultStyleModel();
+    reloadFavourites();
 
     // The first change has to be undoable too, so there is a state to go back
     // to before anything has happened.
@@ -150,7 +158,9 @@ ProgressionsProcessor::~ProgressionsProcessor()
     for (const char* id : { ParamID::part, ParamID::density, ParamID::complexity, ParamID::humanize,
                             ParamID::swing, ParamID::develop, ParamID::octave, ParamID::voices, ParamID::bars,
                             ParamID::follow, ParamID::avoid, ParamID::arpPattern,
-                            ParamID::harmonicRhythm, ParamID::useStyle, ParamID::styleAmount })
+                            ParamID::harmonicRhythm, ParamID::useStyle, ParamID::styleAmount,
+                            ParamID::stackParts, ParamID::accidentals, ParamID::meter,
+                            ParamID::glide })
         apvts.removeParameterListener(id, this);
 
     if (dragFile.existsAsFile())
@@ -465,6 +475,7 @@ harmonia::GenerateOptions ProgressionsProcessor::currentOptions() const
     options.followSourceRhythm = apvts.getRawParameterValue(ParamID::follow)->load() > 0.5f;
     options.avoidSourceCollisions = apvts.getRawParameterValue(ParamID::avoid)->load() > 0.5f;
     options.arpPattern = static_cast<ArpPattern>(juce::jlimit(0, 5, static_cast<int>(apvts.getRawParameterValue(ParamID::arpPattern)->load())));
+    options.glide = apvts.getRawParameterValue(ParamID::glide)->load() > 0.5f;
     options.channel = 0;
 
     if (! styleModel.empty() && apvts.getRawParameterValue(ParamID::useStyle)->load() > 0.5f)
@@ -549,6 +560,7 @@ void ProgressionsProcessor::regenerate()
         padStamp = fingerprint(partSequences[0]);
     partPadStamp[static_cast<size_t>(active)] = padStamp;
 
+    resizeChordLocks();
     clipBpm.store(juce::jlimit(20.0, 300.0, engine.analysis().bpm));
     republishParts();
     captureSettledState();
@@ -586,6 +598,7 @@ void ProgressionsProcessor::initialise()
     keyScale = harmonia::ScaleType::NaturalMinor;
 
     dropAllParts();
+    lockedChords.clear();
     padStamp = 0;
     partPadStamp.fill(0);
     sourceName.clear();
@@ -614,13 +627,14 @@ void ProgressionsProcessor::setSeed(juce::uint32 newSeed)
 void ProgressionsProcessor::reharmonize(float amount)
 {
     pushUndoState(true);
-    engine.applyReharmonization(seed * 2654435761u + 17u, amount);
+    engine.applyReharmonization(seed * 2654435761u + 17u, amount, chordLocks());
     regenerate();
 }
 
 void ProgressionsProcessor::resetProgression()
 {
     pushUndoState(true);
+    lockedChords.clear();
     engine.resetProgression();
     regenerate();
 }
@@ -628,6 +642,8 @@ void ProgressionsProcessor::resetProgression()
 bool ProgressionsProcessor::setProgressionText(const juce::String& text)
 {
     pushUndoState(true);
+    // Slot 2 of the chords you just typed is not the slot 2 you had locked.
+    lockedChords.clear();
     std::string error;
     if (! engine.setProgressionText(text.toStdString(), error))
     {
@@ -644,12 +660,21 @@ bool ProgressionsProcessor::setProgressionText(const juce::String& text)
 bool ProgressionsProcessor::applyPreset(const juce::String& presetId)
 {
     pushUndoState(true);
+    lockedChords.clear();
     std::string error;
     if (! engine.applyPreset(presetId.toStdString(), error))
     {
         lastError = error;
         sendChangeMessage();
         return false;
+    }
+
+    // A preset takes its own mode, so a key that was pinned is now pinned to a
+    // different one - the boxes and the saved state have to say so too.
+    if (keyForced)
+    {
+        keyTonic = engine.analysis().key.tonic;
+        keyScale = engine.analysis().key.scale;
     }
 
     lastError.clear();
@@ -904,6 +929,10 @@ void ProgressionsProcessor::setForcedKey(bool forced, int tonic, harmonia::Scale
 
 void ProgressionsProcessor::nudgeChord(int index, int direction)
 {
+    // Locked means locked, whichever way you try to change it.
+    if (isChordLocked(index))
+        return;
+
     pushUndoState(true);
     const auto& progression = engine.analysis().progression;
     if (! juce::isPositiveAndBelow(index, static_cast<int>(progression.size())))
@@ -925,6 +954,246 @@ void ProgressionsProcessor::nudgeChord(int index, int direction)
 }
 
 // ---------------------------------------------------------------------------
+// Locked chords
+//
+// A lock is a decision the user made about this session, not something the clip
+// said, so it lives here rather than in the Analysis. It means one thing
+// everywhere: this chord does not change. Reharmonise writes around it, Surprise
+// me keeps it, and clicking it no longer walks it up a degree - otherwise the
+// lock would be honoured by two paths out of three, which is worse than not
+// having it.
+
+void ProgressionsProcessor::resizeChordLocks()
+{
+    const auto wanted = engine.analysis().progression.size();
+    if (lockedChords.size() != wanted)
+        lockedChords.resize(wanted, false);
+}
+
+bool ProgressionsProcessor::isChordLocked(int index) const
+{
+    return index >= 0 && static_cast<size_t>(index) < lockedChords.size()
+        && lockedChords[static_cast<size_t>(index)];
+}
+
+void ProgressionsProcessor::toggleChordLock(int index)
+{
+    resizeChordLocks();
+    if (index < 0 || static_cast<size_t>(index) >= lockedChords.size())
+        return;
+
+    // A lock changes nothing that is sounding, so there is nothing to undo and
+    // nothing to regenerate - only the strip has to redraw.
+    lockedChords[static_cast<size_t>(index)] = ! lockedChords[static_cast<size_t>(index)];
+    captureSettledState();
+    sendChangeMessage();
+}
+
+std::vector<bool> ProgressionsProcessor::chordLocks() const
+{
+    auto locks = lockedChords;
+    locks.resize(engine.analysis().progression.size(), false);
+    return locks;
+}
+
+bool ProgressionsProcessor::hasLockedChords() const
+{
+    for (bool locked : lockedChords)
+        if (locked)
+            return true;
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+
+void ProgressionsProcessor::surpriseMe()
+{
+    pushUndoState(true);
+
+    seed = static_cast<juce::uint32>(juce::Random::getSystemRandom().nextInt(1000000) + 1);
+
+    // A key first, and it is pinned rather than left to the detector: the point
+    // of a surprise is to be told what you got, and roman numerals only read
+    // right against a key that is actually set.
+    const auto key = harmonia::inventKey(seed);
+    keyForced = true;
+    keyTonic = key.tonic;
+    keyScale = key.scale;
+
+    auto analysisOptions = engine.analysisOptions();
+    analysisOptions.forceKey = true;
+    analysisOptions.key = key;
+    engine.setAnalysisOptions(analysisOptions);
+
+    // Four chords, sometimes eight. Longer than that and it stops being a loop.
+    harmonia::Rng rng(seed ^ 0x5bf03635u);
+    const int length = rng.chance(0.25f) ? 8 : 4;
+
+    auto chords = harmonia::inventProgression(key, seed, length,
+                                              styleModel.empty() ? nullptr : &styleModel);
+    if (chords.empty())
+    {
+        lastError = "Could not invent a progression in " + juce::String(key.name());
+        sendChangeMessage();
+        return;
+    }
+
+    // Anything locked is kept where it was. A surprise is meant to hand you
+    // something new, not to throw away the two chords you had already decided on.
+    const auto& current = engine.analysis().progression;
+    for (size_t i = 0; i < chords.size() && i < current.size(); ++i)
+        if (isChordLocked(static_cast<int>(i)))
+            chords[i] = current[i].chord;
+
+    std::string error;
+    if (! engine.setProgressionText(harmonia::progressionToText(chords, key), error))
+    {
+        lastError = error;
+        sendChangeMessage();
+        return;
+    }
+
+    lastError.clear();
+    regenerate();
+}
+
+// ---------------------------------------------------------------------------
+// Favourites
+
+juce::File ProgressionsProcessor::favouritesMidiFolder()
+{
+    return favourites::midiFolder();
+}
+
+void ProgressionsProcessor::reloadFavourites()
+{
+    favouriteEntries = favourites::load();
+}
+
+juce::String ProgressionsProcessor::describeCurrentIdea() const
+{
+    const auto& analysis = engine.analysis();
+    if (! analysis.valid)
+        return "Empty";
+
+    const auto style = static_cast<harmonia::AccidentalStyle>(
+        juce::jlimit(0, 2, static_cast<int>(apvts.getRawParameterValue(ParamID::accidentals)->load())));
+    const bool flats = harmonia::useFlatsFor(analysis.key, style);
+
+    juce::String name = juce::String(analysis.key.name(flats)) + "  "
+                      + juce::String(analysis.progressionString());
+
+    juce::StringArray parts;
+    for (int part = 0; part < kNumParts; ++part)
+        if (partLive[static_cast<size_t>(part)])
+            parts.add(kPartNames[part]);
+
+    if (! parts.isEmpty())
+        name += "  -  " + parts.joinIntoString(", ");
+    return name;
+}
+
+bool ProgressionsProcessor::saveFavourite()
+{
+    reloadFavourites();
+
+    auto name = describeCurrentIdea();
+    // Two identical ideas are worth keeping apart in the list, even when the
+    // key and the chords read the same.
+    int suffix = 2;
+    const auto base = name;
+    const auto taken = [this](const juce::String& candidate)
+    {
+        for (const auto& entry : favouriteEntries)
+            if (entry.name == candidate)
+                return true;
+        return false;
+    };
+    while (taken(name))
+        name = base + "  (" + juce::String(suffix++) + ")";
+
+    favourites::Entry entry;
+    entry.name = name;
+    entry.created = juce::Time::getCurrentTime().toISO8601(true);
+    entry.state = stateTree();
+
+    // The MIDI beside it: one file per part that is actually playing, named so
+    // the folder is readable without opening anything.
+    const auto folder = favourites::midiFolder().getChildFile(juce::File::createLegalFileName(name));
+    const auto created = folder.createDirectory();
+    if (created.wasOk())
+    {
+        int written = 0;
+        for (int part = 0; part < kNumParts; ++part)
+        {
+            const auto& sequence = partSequences[static_cast<size_t>(part)];
+            if (! partLive[static_cast<size_t>(part)] || sequence.empty())
+                continue;
+
+            const auto bytes = harmonia::midi::writeToMemory(sequence);
+            const auto file = folder.getChildFile(juce::String(part + 1) + " " + kPartNames[part] + ".mid");
+            if (file.replaceWithData(bytes.data(), bytes.size()))
+                ++written;
+        }
+        if (written > 0)
+            entry.folder = folder.getFullPathName();
+    }
+    else
+    {
+        lastError = "Saved, but could not write the MIDI: " + created.getErrorMessage();
+    }
+
+    favouriteEntries.push_back(std::move(entry));
+
+    juce::String error;
+    if (! favourites::save(favouriteEntries, error))
+    {
+        lastError = "Could not keep this favourite: " + error;
+        favouriteEntries.pop_back();
+        sendChangeMessage();
+        return false;
+    }
+
+    sendChangeMessage();
+    return true;
+}
+
+bool ProgressionsProcessor::recallFavourite(int index)
+{
+    if (! juce::isPositiveAndBelow(index, static_cast<int>(favouriteEntries.size())))
+        return false;
+
+    pushUndoState(true);
+    applyStateTree(favouriteEntries[static_cast<size_t>(index)].state);
+    captureSettledState();
+    sendChangeMessage();
+    return true;
+}
+
+bool ProgressionsProcessor::deleteFavourite(int index)
+{
+    if (! juce::isPositiveAndBelow(index, static_cast<int>(favouriteEntries.size())))
+        return false;
+
+    // Only the entry goes. The MIDI it wrote is the user's own material sitting
+    // in their own music folder, and deleting files nobody asked us to delete
+    // is not something this should ever do quietly.
+    favouriteEntries.erase(favouriteEntries.begin() + index);
+
+    juce::String error;
+    if (! favourites::save(favouriteEntries, error))
+    {
+        lastError = "Could not update the favourites list: " + error;
+        reloadFavourites();
+        sendChangeMessage();
+        return false;
+    }
+
+    sendChangeMessage();
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 
 bool ProgressionsProcessor::loadMidiFile(const juce::File& file)
 {
@@ -942,6 +1211,7 @@ bool ProgressionsProcessor::loadMidiFile(const juce::File& file)
 bool ProgressionsProcessor::loadMidiFromData(const void* data, size_t size, const juce::String& displayName)
 {
     pushUndoState(true);
+    lockedChords.clear();
     std::string error;
     if (! engine.loadSourceFromMemory(static_cast<const juce::uint8*>(data), size, error))
     {
@@ -1028,6 +1298,15 @@ juce::ValueTree ProgressionsProcessor::stateTree()
         state.setProperty("styleFile", styleFile.getFullPathName(), nullptr);
     state.setProperty("keyTonic", keyTonic, nullptr);
     state.setProperty("keyScale", static_cast<int>(keyScale), nullptr);
+    if (hasLockedChords())
+    {
+        // One character per chord, so a glance at the project file says which
+        // ones were pinned.
+        juce::String locks;
+        for (bool locked : lockedChords)
+            locks += locked ? "1" : "0";
+        state.setProperty("chordLocks", locks, nullptr);
+    }
     if (engine.hasWrittenProgression())
         state.setProperty("progression", juce::String(engine.progressionText()), nullptr);
     if (sourceMidiData.getSize() > 0)
@@ -1084,6 +1363,13 @@ void ProgressionsProcessor::applyStateTree(const juce::ValueTree& source)
     if (savedStyle.existsAsFile())
         loadStyleModelFile(savedStyle, false);
     state.removeProperty("styleFile", nullptr);
+
+    const auto locks = state.getProperty("chordLocks", "").toString();
+    lockedChords.clear();
+    lockedChords.reserve(static_cast<size_t>(locks.length()));
+    for (int i = 0; i < locks.length(); ++i)
+        lockedChords.push_back(locks[i] == '1');
+    state.removeProperty("chordLocks", nullptr);
 
     keyForced = state.getProperty("keyForced", false);
     keyTonic = juce::jlimit(0, 11, static_cast<int>(state.getProperty("keyTonic", 9)));

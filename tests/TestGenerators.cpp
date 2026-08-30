@@ -526,3 +526,90 @@ TEST(ReeseMovesWithoutWandering)
         }
     }
 }
+
+TEST(ReeseWithoutGlideNeverOverlaps)
+{
+    auto engine = engineFromBassLine();
+    auto options = cleanOptions(PartType::Reese);
+    options.glide = false;
+    const auto reese = engine.generate(options);
+    CHECK(! reese.empty());
+
+    // The whole reason the switch exists: on a polyphonic patch two low notes
+    // sounding together sum and fight in the low end. With glide off nothing
+    // may ever overlap - not by one tick.
+    for (size_t i = 1; i < reese.notes.size(); ++i)
+        CHECK(reese.notes[i].startTick >= reese.notes[i - 1].endTick());
+
+    // Still a Reese and not a plucked bass: held notes only.
+    for (const auto& note : reese.notes)
+        CHECK(note.lengthTick >= reese.ppq);
+}
+
+TEST(ReeseVariesItsNoteLengths)
+{
+    // One held note a bar forever is what this used to be. Across a handful of
+    // seeds the part has to produce more than a single note length, or the
+    // "shorter and longer notes" it claims are not there.
+    auto engine = engineFromBassLine();
+    std::set<int64_t> lengths;
+    for (uint32_t seed = 1; seed <= 8; ++seed)
+    {
+        auto options = cleanOptions(PartType::Reese);
+        options.seed = seed;
+        options.density = 0.7f;
+        for (const auto& note : engine.generate(options).notes)
+            lengths.insert(note.lengthTick);
+    }
+    CHECK(lengths.size() >= 3);
+}
+
+TEST(LockedChordsSurviveAReharmonisation)
+{
+    auto engine = engineFromBassLine();
+    const auto before = engine.analysis().progression;
+    CHECK(before.size() >= 4);
+
+    // Lock the first and the third; everything is allowed to move.
+    std::vector<bool> locked(before.size(), false);
+    locked[0] = true;
+    locked[2] = true;
+
+    engine.applyReharmonization(7u, 1.0f, locked);
+    const auto after = engine.analysis().progression;
+    CHECK(after.size() == before.size());
+
+    CHECK(after[0].chord.root == before[0].chord.root);
+    CHECK(after[0].chord.type == before[0].chord.type);
+    CHECK(after[2].chord.root == before[2].chord.root);
+    CHECK(after[2].chord.type == before[2].chord.type);
+
+    // And it still did the job on the ones that were free.
+    const bool movedSomething = after[1].chord.root != before[1].chord.root
+                             || after[1].chord.type != before[1].chord.type
+                             || after[3].chord.root != before[3].chord.root
+                             || after[3].chord.type != before[3].chord.type;
+    CHECK(movedSomething);
+}
+
+TEST(ReeseNeverStacksAPitchOnItself)
+{
+    // Two overlapping note-ons for the same pitch is one voice with two ons and
+    // two offs: the first off cuts it short, and the glide it was meant to make
+    // is a glide from a note to itself. Held longer is the only right answer.
+    auto engine = engineFromBassLine();
+    for (uint32_t seed = 1; seed <= 24; ++seed)
+    {
+        auto options = cleanOptions(PartType::Reese);
+        options.seed = seed;
+        options.density = 0.85f;
+        options.complexity = 0.85f;
+        const auto reese = engine.generate(options);
+
+        for (size_t i = 0; i < reese.notes.size(); ++i)
+            for (size_t j = i + 1; j < reese.notes.size(); ++j)
+                if (reese.notes[i].pitch == reese.notes[j].pitch)
+                    CHECK(reese.notes[j].startTick >= reese.notes[i].endTick()
+                          || reese.notes[i].startTick >= reese.notes[j].endTick());
+    }
+}

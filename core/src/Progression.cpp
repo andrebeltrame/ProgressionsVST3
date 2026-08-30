@@ -1,5 +1,8 @@
 #include "harmonia/Progression.h"
 
+#include "harmonia/Rng.h"
+#include "harmonia/StyleModel.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstring>
@@ -476,6 +479,138 @@ void applyProgressionTo(Analysis& analysis, const std::vector<Chord>& chords)
         segment.confidence = 1.0f;
         analysis.progression.push_back(segment);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Inventing harmony out of nothing
+
+namespace
+{
+/** Where a degree tends to go next, as weights over the seven degrees. Two
+    tables because the pull is not the same one: in major everything leans on
+    V and vi, in minor on VI and VII. These are the ordinary moves of pop and
+    house harmony written down - not a theory of everything, just the ones that
+    sound like a record rather than an exercise. */
+const float kMajorMoves[7][7] = {
+    //     I    ii   iii  IV   V    vi   vii
+    /*I*/  { 0.0f, 2.0f, 1.0f, 3.0f, 3.0f, 3.0f, 0.5f },
+    /*ii*/ { 0.5f, 0.0f, 0.5f, 1.0f, 3.0f, 1.0f, 0.5f },
+    /*iii*/{ 0.5f, 1.0f, 0.0f, 2.0f, 0.5f, 3.0f, 0.0f },
+    /*IV*/ { 2.0f, 1.0f, 0.5f, 0.0f, 3.0f, 2.0f, 0.5f },
+    /*V*/  { 3.0f, 0.5f, 0.5f, 1.0f, 0.0f, 2.0f, 0.0f },
+    /*vi*/ { 1.0f, 2.0f, 0.5f, 3.0f, 2.0f, 0.0f, 0.5f },
+    /*vii*/{ 2.0f, 0.0f, 1.0f, 0.5f, 0.5f, 0.5f, 0.0f },
+};
+
+const float kMinorMoves[7][7] = {
+    //     i    ii   III  iv   v    VI   VII
+    /*i*/  { 0.0f, 0.5f, 2.0f, 2.0f, 1.0f, 3.0f, 3.0f },
+    /*ii*/ { 1.0f, 0.0f, 0.5f, 0.5f, 2.0f, 0.5f, 1.0f },
+    /*III*/{ 1.0f, 0.5f, 0.0f, 2.0f, 0.5f, 2.0f, 3.0f },
+    /*iv*/ { 2.0f, 0.5f, 1.0f, 0.0f, 2.0f, 2.0f, 2.0f },
+    /*v*/  { 3.0f, 0.0f, 0.5f, 0.5f, 0.0f, 2.0f, 1.0f },
+    /*VI*/ { 1.0f, 0.5f, 2.0f, 2.0f, 1.0f, 0.0f, 3.0f },
+    /*VII*/{ 3.0f, 0.0f, 3.0f, 1.0f, 0.5f, 1.0f, 0.0f },
+};
+} // namespace
+
+Key inventKey(uint32_t seed)
+{
+    Rng rng(seed * 2246822519u + 3266489917u);
+
+    // Every tonic is as good as the next; the mode is not. These weights are
+    // what this plugin gets used for, minor first.
+    static const ScaleType modes[] = { ScaleType::NaturalMinor, ScaleType::Major, ScaleType::Dorian,
+                                       ScaleType::Mixolydian, ScaleType::Phrygian, ScaleType::Lydian,
+                                       ScaleType::HarmonicMinor };
+    const std::vector<float> weights { 40.0f, 20.0f, 15.0f, 10.0f, 8.0f, 4.0f, 3.0f };
+
+    Key key;
+    key.tonic = rng.range(0, 11);
+    key.scale = modes[static_cast<size_t>(std::max(0, rng.weighted(weights)))];
+    return key;
+}
+
+std::vector<Chord> inventProgression(const Key& key, uint32_t seed, int length, const StyleModel* style)
+{
+    const int wanted = std::clamp(length, 2, 16);
+    Rng rng(seed);
+
+    const auto triads = diatonicTriads(key);
+    if (triads.size() < 7)
+        return {};
+
+    // 1. Your own collection first, when there is one. A learned loop is a
+    //    string of numerals and a count - it says which moves you make, and
+    //    carries none of the material it was counted from.
+    if (style != nullptr)
+    {
+        const auto learned = style->topProgressions(24);
+        if (! learned.empty())
+        {
+            std::vector<float> weights;
+            weights.reserve(learned.size());
+            for (const auto& entry : learned)
+                weights.push_back(static_cast<float>(entry.second));
+
+            const int pick = rng.weighted(weights);
+            if (pick >= 0)
+            {
+                std::vector<Chord> chords;
+                std::string error;
+                if (parseProgression(learned[static_cast<size_t>(pick)].first, key, chords, error)
+                    && chords.size() >= 2)
+                {
+                    // Take it as it is when it fits the bars asked for, and cut
+                    // or repeat it when it does not - a four-chord loop over
+                    // eight bars is the same loop twice, which is how it was
+                    // played in the first place.
+                    std::vector<Chord> out;
+                    out.reserve(static_cast<size_t>(wanted));
+                    for (int i = 0; i < wanted; ++i)
+                        out.push_back(chords[static_cast<size_t>(i) % chords.size()]);
+                    return out;
+                }
+            }
+        }
+    }
+
+    // 2. No library, or nothing usable in it: walk the key's own harmony. This
+    //    is the path that has to work on a fresh installation, so it is never
+    //    allowed to depend on anything having been learned.
+    const bool minor = key.isMinorMode();
+    std::vector<Chord> out;
+    out.reserve(static_cast<size_t>(wanted));
+
+    // Starting somewhere other than the tonic now and then is most of what
+    // makes one of these not sound like the last one.
+    int degree = rng.chance(0.72f) ? 0 : (minor ? (rng.chance(0.5f) ? 5 : 2)   // VI or III
+                                               : (rng.chance(0.5f) ? 5 : 3));  // vi or IV
+    out.push_back(triads[static_cast<size_t>(degree)]);
+
+    for (int i = 1; i < wanted; ++i)
+    {
+        const float* row = minor ? kMinorMoves[degree] : kMajorMoves[degree];
+        std::vector<float> weights(row, row + 7);
+
+        // The last chord has to want to go back to the first, or the loop has
+        // a seam in it every time it comes round.
+        if (i == wanted - 1)
+        {
+            const int home = key.degreeOf(out.front().root);
+            for (int d = 0; d < 7; ++d)
+            {
+                const float* back = minor ? kMinorMoves[d] : kMajorMoves[d];
+                weights[static_cast<size_t>(d)] *= 0.4f + (home >= 0 ? back[home] : 1.0f);
+            }
+        }
+
+        const int next = rng.weighted(weights);
+        degree = next >= 0 ? next : 0;
+        out.push_back(triads[static_cast<size_t>(degree)]);
+    }
+
+    return out;
 }
 
 } // namespace harmonia

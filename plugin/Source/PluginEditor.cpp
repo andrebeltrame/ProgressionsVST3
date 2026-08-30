@@ -107,6 +107,15 @@ ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
     loadButton.onClick = [this] { showLoadDialog(); };
     addAndMakeVisible(loadButton);
 
+    // Beside Load MIDI, because it answers the same question from the other
+    // end: one gets the harmony out of a clip you have, the other invents one
+    // when you have nothing at all.
+    surpriseButton.setTooltip("A whole idea out of nothing: a key, a progression that works in it, "
+                              "and a new seed. With a library learned it draws on the loops your own "
+                              "collection actually plays. Chords you have pinned are kept.");
+    surpriseButton.onClick = [this] { processor.surpriseMe(); };
+    addAndMakeVisible(surpriseButton);
+
     initButton.setTooltip("Back to a fresh instance: no clip, no typed progression, every knob "
                           "at its default. Your learned library stays - it belongs to the plugin, "
                           "not to this patch");
@@ -126,6 +135,7 @@ ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
     addAndMakeVisible(infoPanel);
 
     progressionStrip.onChordNudged = [this](int index, int direction) { processor.nudgeChord(index, direction); };
+    progressionStrip.onLockToggled = [this](int index) { processor.toggleChordLock(index); };
     addAndMakeVisible(progressionStrip);
 
     // ---- Part selector ------------------------------------------------------
@@ -215,12 +225,21 @@ ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
     arpAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         processor.apvts, ParamID::arpPattern, arpBox);
 
-    for (auto* toggle : { &followToggle, &avoidToggle, &syncToggle, &previewToggle, &stackToggle })
+    for (auto* toggle : { &followToggle, &avoidToggle, &syncToggle, &stackToggle, &glideToggle })
         addAndMakeVisible(toggle);
 
-    stackToggle.setTooltip("Play every part you have generated together, each on its own MIDI "
-                           "channel, instead of only the one selected. The pad on channel 1, "
-                           "chords on 2, and so on - point a different instrument at each.");
+    stackToggle.setTooltip("Play every part you have generated together instead of only the one "
+                           "selected - turn it off to hear a single sequence on its own. Each part "
+                           "goes out on its own MIDI channel, so a host that keeps channels can "
+                           "point a different instrument at each.");
+
+    glideToggle.setTooltip("Reese only. On, each note runs past the start of the next one, which is "
+                           "the only way a mono synth will portamento between them - write the glide "
+                           "into the synth later and the MIDI already allows it. Off, notes end where "
+                           "the next begins: nothing overlaps, so nothing sums in the low end, which "
+                           "is what you want on a polyphonic patch.");
+    glideAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        processor.apvts, ParamID::glide, glideToggle);
     stackAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         processor.apvts, ParamID::stackParts, stackToggle);
 
@@ -234,8 +253,9 @@ ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
         processor.apvts, ParamID::avoid, avoidToggle);
     syncAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         processor.apvts, ParamID::hostSync, syncToggle);
+    addAndMakeVisible(previewButton);
     previewAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        processor.apvts, ParamID::preview, previewToggle);
+        processor.apvts, ParamID::preview, previewButton);
 
     levelSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     levelSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 58, 18);
@@ -345,6 +365,13 @@ ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
     styleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         processor.apvts, ParamID::useStyle, styleToggle);
 
+    favouritesButton.setTooltip("Keep this combination, or bring one back. Favourites live with the "
+                                "plug-in rather than with the project, so they are there in every set "
+                                "you open. Saving one also writes a MIDI file per part into your "
+                                "music folder.");
+    favouritesButton.onClick = [this] { showFavouritesMenu(); };
+    addAndMakeVisible(favouritesButton);
+
     // ---- Actions -------------------------------------------------------------
     diceButton.setTooltip("Roll a new seed - same settings, a different idea");
     diceButton.onClick = [this] { processor.rollNewSeed(); };
@@ -431,6 +458,23 @@ bool ProgressionsEditor::preferFlats() const
     return harmonia::useFlatsFor(processor.getEngine().analysis().key, style);
 }
 
+void ProgressionsEditor::refreshPreviewRow()
+{
+    const bool on = previewButton.getToggleState();
+    if (levelSlider.isEnabled() == on)
+        return;
+
+    levelSlider.setEnabled(on);
+    levelLabel.setEnabled(on);
+
+    // The slider's colours are set explicitly, so disabling it is not enough to
+    // make it look disabled - it has to be told.
+    levelSlider.setColour(juce::Slider::trackColourId, on ? accent : outline);
+    levelSlider.setColour(juce::Slider::thumbColourId, on ? text : textDim);
+    levelSlider.setColour(juce::Slider::textBoxTextColourId, on ? text : textDim);
+    levelSlider.repaint();
+}
+
 void ProgressionsEditor::refreshPartButtons()
 {
     for (int i = 0; i < partButtons.size(); ++i)
@@ -472,6 +516,7 @@ void ProgressionsEditor::refresh()
     progressionStrip.setPreferFlats(preferFlats());
     pianoRoll.setContent(processor.getEngine().source(), processor.getGeneratedSequence(), analysis);
     progressionStrip.setAnalysis(analysis);
+    progressionStrip.setLocks(processor.chordLocks());
     refreshPartButtons();
 
     sourceLabel.setText(hasSource ? processor.getSourceName() : juce::String("no clip loaded"),
@@ -528,6 +573,9 @@ void ProgressionsEditor::refresh()
     craftKnob.label.setEnabled(melodicPart);
     arpBox.setEnabled(part == PartType::Arp);
     arpLabel.setEnabled(part == PartType::Arp);
+    // The overlap is a property of the Reese and of nothing else, so the switch
+    // says so by going dim on every other tab.
+    glideToggle.setEnabled(part == PartType::Reese);
 
     const bool hasOutput = ! processor.getGeneratedSequence().empty();
     exportButton.setEnabled(hasOutput);
@@ -573,6 +621,8 @@ void ProgressionsEditor::refresh()
     reharmKnob.label.setEnabled(analysis.valid);
     undoButton.setEnabled(processor.canUndo());
     dropPartButton.setEnabled(processor.isPartLive(processor.activePartIndex()));
+
+    refreshPreviewRow();
 }
 
 void ProgressionsEditor::applyTypedProgression()
@@ -622,6 +672,10 @@ void ProgressionsEditor::changeListenerCallback(juce::ChangeBroadcaster*)
 void ProgressionsEditor::timerCallback()
 {
     pianoRoll.setPlayPosition(processor.getPlayPositionNormalised());
+
+    // The preview switch is not one of the parameters that trigger a
+    // regeneration, so nothing else would notice it changing.
+    refreshPreviewRow();
 
     // A scan takes minutes; the counter has to move or it looks hung.
     if (processor.isScanningLibrary())
@@ -735,6 +789,53 @@ void ProgressionsEditor::showStyleDialog()
                          });
 }
 
+void ProgressionsEditor::showFavouritesMenu()
+{
+    processor.reloadFavourites();
+    const auto& entries = processor.favouriteList();
+
+    juce::PopupMenu menu;
+
+    const bool canSave = processor.getEngine().analysis().valid;
+    menu.addSectionHeader(canSave ? processor.describeCurrentIdea() : juce::String("Nothing to keep yet"));
+    menu.addItem(1, "Keep this one", canSave);
+    menu.addSeparator();
+
+    if (entries.empty())
+    {
+        menu.addItem(2, "No favourites yet", false);
+    }
+    else
+    {
+        // Newest first: the one you just kept is the one you are most likely to
+        // want back.
+        for (int i = static_cast<int>(entries.size()) - 1; i >= 0; --i)
+            menu.addItem(100 + i, entries[static_cast<size_t>(i)].name);
+
+        juce::PopupMenu remove;
+        for (int i = static_cast<int>(entries.size()) - 1; i >= 0; --i)
+            remove.addItem(1000 + i, entries[static_cast<size_t>(i)].name);
+        menu.addSeparator();
+        menu.addSubMenu("Forget one (the MIDI files stay)", remove);
+    }
+
+    menu.addSeparator();
+    menu.addItem(3, "Open my MIDI folder");
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(favouritesButton),
+                       [this](int choice)
+                       {
+                           if (choice == 1)
+                               processor.saveFavourite();
+                           else if (choice == 3)
+                               ProgressionsProcessor::favouritesMidiFolder().revealToUser();
+                           else if (choice >= 1000)
+                               processor.deleteFavourite(choice - 1000);
+                           else if (choice >= 100)
+                               processor.recallFavourite(choice - 100);
+                       });
+}
+
 void ProgressionsEditor::showExportDialog()
 {
     const auto suggested = juce::File::getSpecialLocation(juce::File::userMusicDirectory)
@@ -814,10 +915,11 @@ void ProgressionsEditor::resized()
     // ---- Header --------------------------------------------------------------
     auto header = area.removeFromTop(52);
     {
-        auto buttons = header.removeFromRight(272);
+        auto buttons = header.removeFromRight(396);
         buttons.removeFromTop(8);
         clearButton.setBounds(buttons.removeFromRight(84).reduced(2, 6));
-        loadButton.setBounds(buttons.removeFromRight(120).reduced(2, 6));
+        loadButton.setBounds(buttons.removeFromRight(114).reduced(2, 6));
+        surpriseButton.setBounds(buttons.removeFromRight(112).reduced(2, 6));
         initButton.setBounds(buttons.removeFromRight(58).reduced(2, 6));
 
         auto titleArea = header.removeFromLeft(250);
@@ -874,8 +976,11 @@ void ProgressionsEditor::resized()
         // Everything below the read-out is fixed height; the read-out takes the rest.
         // Key, Length and the spelling switch live with the typed chords now,
         // so what is left here is what shapes the part rather than the harmony.
-        constexpr int controlsHeight = 2 * (14 + 26) + 8 + 12 + 3 * (24 + 4)
-                                     + 12 + 14 + 24 + 10 + 26 + 4 + 24;
+        // Adding up exactly what is placed below, in order: the combo row, the
+        // three toggle rows, the preview row, the library block and the
+        // favourites button.
+        constexpr int controlsHeight = (14 + 26) + 12 + (24 + 4 + 24 + 4 + 24)
+                                     + 12 + (14 + 26) + 10 + (26 + 4 + 24) + 8 + 26;
         infoPanel.setBounds(side.removeFromTop(juce::jmax(150, side.getHeight() - controlsHeight - 10)));
         side.removeFromTop(10);
 
@@ -895,19 +1000,29 @@ void ProgressionsEditor::resized()
         side.removeFromTop(4);
         toggleRow = side.removeFromTop(24);
         avoidToggle.setBounds(toggleRow.removeFromLeft(half).reduced(2, 0));
-        previewToggle.setBounds(toggleRow.reduced(2, 0));
+        glideToggle.setBounds(toggleRow.reduced(2, 0));
 
         side.removeFromTop(4);
         stackToggle.setBounds(side.removeFromTop(24).reduced(2, 0));
 
         side.removeFromTop(12);
         levelLabel.setBounds(side.removeFromTop(14));
-        levelSlider.setBounds(side.removeFromTop(24));
+        {
+            // The speaker leads the row and the level follows it: the icon is
+            // the switch, the slider only says how loud the switch is.
+            auto previewRow = side.removeFromTop(26);
+            previewButton.setBounds(previewRow.removeFromLeft(38).reduced(2, 0));
+            previewRow.removeFromLeft(6);
+            levelSlider.setBounds(previewRow.reduced(2, 1));
+        }
 
         side.removeFromTop(10);
         styleButton.setBounds(side.removeFromTop(26).reduced(2, 0));
         side.removeFromTop(4);
         styleToggle.setBounds(side.removeFromTop(24).reduced(2, 0));
+
+        side.removeFromTop(8);
+        favouritesButton.setBounds(side.removeFromTop(26).reduced(2, 0));
     }
 
     // ---- Main view -----------------------------------------------------------
