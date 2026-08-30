@@ -215,10 +215,25 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.tag.outputs.name }}
         run: |
+          # The page has to answer "is this the current one?" on its own. A
+          # version can be republished, so the file name alone cannot say - and
+          # whoever is about to forward this to somebody should not have to ask.
+          notes=$(cat <<NOTES
+          Built from \`${GITHUB_SHA:0:7}\` on $(date -u '+%d %b %Y, %H:%M UTC').
+
+          | file | |
+          |---|---|
+          | \`Progressions-${TAG#v}.zip\` | The plug-in and INSTALL.txt. **This is the one to share.** |
+          | \`install-windows.ps1\` | Only if Windows gives trouble. Put it beside Progressions.vst3 and right-click -> Run with PowerShell. |
+
+          One plug-in, both systems: a .vst3 is a folder, and it carries a macOS and a Windows binary side by side.
+          NOTES
+          )
           # Re-running a build for a version already out replaces its files
           # rather than failing, so a fix can be shipped under the same name.
           if gh release view "$TAG" > /dev/null 2>&1; then
               gh release upload "$TAG" artifacts/* --clobber
+              gh release edit "$TAG" --notes "$notes"
           else
-              gh release create "$TAG" --target "$GITHUB_SHA" --generate-notes artifacts/*
+              gh release create "$TAG" --target "$GITHUB_SHA" --notes "$notes" artifacts/*
           fi
