@@ -154,8 +154,10 @@ oitava só, nunca duas notas juntas. O `--density` decide se ele segura ou repet
 ## Compartilhar
 
 O jeito fácil: mande o link das
-[Releases](https://github.com/andrebeltrame/claudeapp/releases). É um zip só,
-serve para Mac e Windows, e leva o `INSTALL.txt` dentro.
+[Releases](https://github.com/andrebeltrame/claudeapp/releases). O zip tem o
+plugin e mais nada — abre num item só, e esse item serve para Mac e Windows. O
+`INSTALL.txt` e o `install-windows.ps1` ficam ao lado dele na mesma página, para
+quem precisar.
 
 Se preferir empacotar o que está na sua máquina:
 
@@ -214,8 +216,9 @@ cd ~/caminho/para/claudeapp
 packaging/merge.sh ~/Downloads/macos-bundle.zip ~/Downloads/Progressions.vst3 ~/Desktop
 ```
 
-Sai `Progressions-<versão>.zip` no Desktop, com o bundle universal e o
-`INSTALL.txt`. O script confere o que montou: Mach-O universal com as duas
+Saem três coisas no Desktop: `Progressions-<versão>.zip`, que tem o plugin e
+mais nada, e o `INSTALL.txt` e o `install-windows.ps1` ao lado. O script confere
+o que montou: Mach-O universal com as duas
 arquiteturas, PE32+ do lado Windows, e `codesign -v --strict`.
 
 A assinatura tem que vir **depois** de colocar o binário Windows dentro: mexer
