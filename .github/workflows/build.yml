@@ -224,6 +224,7 @@ jobs:
           | file | |
           |---|---|
           | \`Progressions-${TAG#v}.zip\` | The plug-in and INSTALL.txt. **This is the one to share.** |
+          | \`install-macos.command\` | Only if macOS gives trouble. Put it beside Progressions.vst3 and double-click it. |
           | \`install-windows.ps1\` | Only if Windows gives trouble. Put it beside Progressions.vst3 and right-click -> Run with PowerShell. |
 
           One plug-in, both systems: a .vst3 is a folder, and it carries a macOS and a Windows binary side by side.

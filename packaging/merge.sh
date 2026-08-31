@@ -79,11 +79,19 @@ lipo -archs "$BUNDLE/Contents/MacOS/Progressions" | grep -q x86_64
 sed "s/@VERSION@/$VERSION/" "$ROOT/packaging/INSTALL.txt" > "$PAYLOAD/INSTALL.txt"
 ditto -c -k --keepParent "$PAYLOAD" "$OUT_DIR/Progressions-$VERSION.zip"
 
-# The Windows installer goes beside the zip instead of inside it. It is one
-# click away on the release page for whoever hits trouble - every Windows
-# failure so far has been silent, and that script is what turns "it is not
-# there" into something to read - and out of the way of everyone who does not.
+# The installers go beside the zip instead of inside it, one per system. They
+# are a click away on the release page for whoever hits trouble and out of the
+# way of everyone who does not.
+#
+# Both exist for the same reason: on either system the ways this fails are
+# silent. A plug-in in a folder the host does not scan is never seen, and one
+# still carrying the downloaded-file mark is refused with nothing said anywhere
+# - the DAW simply never lists it. Typed out as separate commands, one step
+# fails in the middle and the failure scrolls past. The scripts do the whole
+# thing and then print what actually ended up on disk.
 cp "$ROOT/packaging/install-windows.ps1" "$OUT_DIR/install-windows.ps1"
+cp "$ROOT/packaging/install-macos.command" "$OUT_DIR/install-macos.command"
+chmod +x "$OUT_DIR/install-macos.command"
 
 rm -rf "$PAYLOAD"
 

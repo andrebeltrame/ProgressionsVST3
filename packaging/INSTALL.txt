@@ -34,6 +34,10 @@ INSTALL - macOS
    silently - no error, it just never shows up. The plug-in is not yet
    registered with Apple, which is the only reason this step exists.
 
+   Or skip steps 1 and 2 entirely: download install-macos.command from the
+   release page, put it in this folder next to Progressions.vst3, and
+   double-click it. It does both and prints what ended up on disk.
+
 3. Restart your DAW and rescan your plug-ins.
    In Ableton Live: Preferences -> Plug-Ins, hold Option and click Rescan.
 
