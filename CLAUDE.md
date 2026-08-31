@@ -182,6 +182,20 @@ glide from a note to itself is nothing to hear, and a second note-on for a pitch
 already sounding leaves the synth with two ons and two offs for one voice, so
 the first off cuts the note short. There is a test for each.
 
+### A figure is decided once - shared by the Pattern and the Arp
+
+`buildFigureBar` is one bar of a figure: where it strikes, how hard, how long.
+Three sources in the order that respects what the user asked for - the groove of
+the clip they loaded, then a real bar out of their corpus (`pickPattern`, which
+carries velocities and note lengths, not just onsets), then one built from
+density, which is what a fresh installation runs on.
+
+Both parts lay that bar down repeat after repeat. The first repeat is always the
+literal figure whatever `motifDevelopment` says: you have to hear a figure before
+you can hear it change. Variation drops notes and nudges them off the grid, never
+the one on the downbeat, which is what the ear uses to recognise the figure at
+all.
+
 ### A Pattern is a figure, an Arp is a chord spelled out
 
 `writePattern` exists because an arpeggio cannot be a figure. An arpeggio reads
@@ -215,6 +229,21 @@ what the ear uses to recognise the figure at all.
 Both paths through the rhythm and the contour work with no library at all. With
 one, the bar comes from `pickPattern` - onsets, velocities *and* note lengths, so
 the dynamics are the user's own - and the contour from `sampleStep`.
+
+The Arp was rebuilt on the same bar and needed it more. It used to re-derive
+everything per step and the numbers said so: eight bars over `Am F C G` gave
+eight interval shapes and six rhythmic grids. Three causes, all of them the same
+mistake in different clothes - the traversal index ran continuously and never
+restarted on the bar; the chord-tone list was rebuilt per chord and changed
+length, so `index % size` landed elsewhere each time; and rests were rolled per
+step. Now the traversal is decided once and stored as **positions**, not
+pitches: position 0 is the sounding chord's root, 1 its third, 2 its fifth, then
+the same tones an octave up. Two bars over the same chord come out identical,
+and there is a test for exactly that.
+
+`ArpPattern::Random` is rolled once into the figure rather than per note. A run
+that is random every time it comes round is not a figure, it is noise that
+happens to be in key.
 
 ### The Sub is not a lower Reese
 

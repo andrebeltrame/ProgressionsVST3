@@ -823,3 +823,57 @@ TEST(CraftVariesThePatternWithoutLosingIt)
         shapes.insert(notes);
     CHECK(shapes.size() > 1);
 }
+
+TEST(ArpRepeatsItsFigureOverTheSameChord)
+{
+    // An arpeggio is recognisable because it repeats. The traversal is decided
+    // once and resolved against whatever chord is sounding, so two bars over
+    // the same chord have to come out identical - which is exactly what the old
+    // one could not do: it re-derived every step and eight bars gave eight
+    // different shapes.
+    auto engine = engineFromBassLine();
+    auto options = cleanOptions(PartType::Arp);
+    options.motifDevelopment = 0.0f;   // the figure, literally
+    options.bars = 8;
+    const auto arp = engine.generate(options);
+    CHECK(! arp.empty());
+
+    const int64_t barTicks = arp.ticksPerBar();
+    const auto& progression = engine.analysis().progression;
+    CHECK(progression.size() == 4);
+
+    std::map<int64_t, std::vector<std::pair<int64_t, int>>> bars;
+    for (const auto& note : arp.notes)
+        bars[note.startTick / barTicks].emplace_back(note.startTick % barTicks, note.pitch);
+
+    // Bar 0 and bar 4 sit over the same chord, and so do 1 and 5, 2 and 6, 3 and 7.
+    CHECK(bars.size() >= 8);
+    for (int64_t bar = 0; bar < 4; ++bar)
+        CHECK(bars[bar] == bars[bar + 4]);
+}
+
+TEST(ArpOnlyEverPlaysTheChord)
+{
+    // The line between this and the Pattern: the Arp's figure is positions in
+    // the chord, so every note belongs to the chord under it. The Pattern's is
+    // degrees of the key, and may sit outside it on purpose.
+    auto engine = engineFromBassLine();
+    const auto& analysis = engine.analysis();
+
+    for (uint32_t seed = 1; seed <= 10; ++seed)
+    {
+        auto options = cleanOptions(PartType::Arp);
+        options.seed = seed;
+        options.density = 0.8f;
+        options.complexity = 0.0f;   // triads, so "the chord" is unambiguous
+        options.motifDevelopment = 0.0f;
+
+        for (const auto& note : engine.generate(options).notes)
+        {
+            const auto* segment = analysis.chordAt(note.startTick);
+            CHECK(segment != nullptr);
+            if (segment != nullptr)
+                CHECK(segment->chord.containsPitchClass(note.pitch % 12));
+        }
+    }
+}

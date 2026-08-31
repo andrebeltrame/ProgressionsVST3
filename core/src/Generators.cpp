@@ -932,6 +932,97 @@ NoteSequence writeSub(Context& ctx)
     return out;
 }
 
+/** One bar of a figure: where it strikes, how hard, and for how long.
+
+    Shared by the Pattern and the Arp, which differ in what they do with the
+    notes but not at all in how the bar is shaped. Three sources, in the order
+    that respects what the user asked for: the groove of the clip they loaded,
+    then a real bar out of their own corpus, then one built from the density
+    knob - and the last of those is what a fresh installation runs on. */
+struct FigureBar
+{
+    static constexpr int kSlots = 16;
+
+    std::array<bool, kSlots> onset { };
+    std::array<int, kSlots> velocity { };
+    std::array<int, kSlots> lengthSlots { };
+    std::vector<int> slots;   // the struck ones, in order
+};
+
+FigureBar buildFigureBar(Context& ctx, StyleRole role, float density, bool useGroove)
+{
+    FigureBar bar;
+    const float amount = std::clamp(density, 0.0f, 1.0f);
+    bool filled = false;
+
+    // 1. The groove under the plugin: the clip loaded, a donor, or the part
+    //    written just before this one.
+    if (useGroove && ! ctx.rhythm.grid.empty())
+    {
+        int active = 0;
+        for (float value : ctx.rhythm.grid)
+            if (value > 0.15f)
+                ++active;
+
+        if (active >= 3)
+        {
+            for (int slot = 0; slot < FigureBar::kSlots; ++slot)
+            {
+                const float weight = ctx.rhythm.grid[static_cast<size_t>(slot)
+                                                     % ctx.rhythm.grid.size()];
+                if (weight <= 0.15f)
+                    continue;
+                bar.onset[static_cast<size_t>(slot)] = true;
+                bar.velocity[static_cast<size_t>(slot)] =
+                    std::clamp(static_cast<int>(72.0f + 48.0f * weight), 1, 127);
+                bar.lengthSlots[static_cast<size_t>(slot)] = 1;
+            }
+            filled = true;
+        }
+    }
+
+    // 2. A bar out of the user's own records - not only where the notes fall
+    //    but the velocity and the length of each one, which is most of what
+    //    separates a figure that breathes from a grid that ticks.
+    if (! filled && ctx.useStyle(role))
+    {
+        const float targetOnsets = 3.0f + 9.0f * amount;
+        if (const auto* learned = pickPattern(*ctx.style(), role, targetOnsets, ctx.rng))
+        {
+            for (int slot = 0; slot < FigureBar::kSlots; ++slot)
+            {
+                bar.onset[static_cast<size_t>(slot)] = learned->hasOnset(slot);
+                bar.velocity[static_cast<size_t>(slot)] = learned->velocity[static_cast<size_t>(slot)];
+                bar.lengthSlots[static_cast<size_t>(slot)] = learned->lengthSlots[static_cast<size_t>(slot)];
+            }
+            filled = true;
+        }
+    }
+
+    // 3. Nothing to draw on: strong 16ths first, then the offbeats as the
+    //    density comes up, so it at least lands where a figure lands.
+    if (! filled)
+    {
+        static const int kOrder[FigureBar::kSlots] =
+            { 0, 8, 4, 12, 2, 6, 10, 14, 3, 11, 7, 15, 1, 9, 5, 13 };
+        const int wanted = std::clamp(2 + static_cast<int>(std::lround(10.0f * amount)),
+                                      2, FigureBar::kSlots);
+        for (int i = 0; i < wanted; ++i)
+        {
+            const int slot = kOrder[i];
+            bar.onset[static_cast<size_t>(slot)] = true;
+            bar.velocity[static_cast<size_t>(slot)] = slot % 4 == 0 ? 104 : (slot % 2 == 0 ? 92 : 80);
+            bar.lengthSlots[static_cast<size_t>(slot)] = 1 + (ctx.rng.chance(0.3f) ? 1 : 0);
+        }
+    }
+
+    for (int slot = 0; slot < FigureBar::kSlots; ++slot)
+        if (bar.onset[static_cast<size_t>(slot)])
+            bar.slots.push_back(slot);
+
+    return bar;
+}
+
 /** A Pattern: one figure, invented once and then repeated.
 
     This is the part an arpeggio cannot be. An arpeggio reads the chord and
@@ -973,45 +1064,9 @@ NoteSequence writePattern(Context& ctx)
     const float follow = std::clamp(options.followChords, 0.0f, 1.0f);
 
     // ---- 1. The rhythm of the figure, one bar of it ------------------------
-    std::array<bool, kSlotsPerBar> onset { };
-    std::array<int, kSlotsPerBar> velocity { };
-    std::array<int, kSlotsPerBar> lengthSlots { };
-
-    const RhythmPattern* learned = nullptr;
-    if (ctx.useStyle(StyleRole::Arp))
-    {
-        const float targetOnsets = 3.0f + 9.0f * density;
-        learned = pickPattern(*ctx.style(), StyleRole::Arp, targetOnsets, ctx.rng);
-    }
-
-    if (learned != nullptr)
-    {
-        for (int slot = 0; slot < kSlotsPerBar; ++slot)
-        {
-            onset[static_cast<size_t>(slot)] = learned->hasOnset(slot);
-            velocity[static_cast<size_t>(slot)] = learned->velocity[static_cast<size_t>(slot)];
-            lengthSlots[static_cast<size_t>(slot)] = learned->lengthSlots[static_cast<size_t>(slot)];
-        }
-    }
-    else
-    {
-        // Nothing learned: build a bar that at least lands where a figure lands.
-        // Strong 16ths first, then the offbeats as the density comes up.
-        static const int kOrder[kSlotsPerBar] = { 0, 8, 4, 12, 2, 6, 10, 14, 3, 11, 7, 15, 1, 9, 5, 13 };
-        const int wanted = std::clamp(2 + static_cast<int>(std::lround(10.0f * density)), 2, kSlotsPerBar);
-        for (int i = 0; i < wanted; ++i)
-        {
-            const int slot = kOrder[i];
-            onset[static_cast<size_t>(slot)] = true;
-            velocity[static_cast<size_t>(slot)] = slot % 4 == 0 ? 104 : (slot % 2 == 0 ? 92 : 80);
-            lengthSlots[static_cast<size_t>(slot)] = 1 + (ctx.rng.chance(0.3f) ? 1 : 0);
-        }
-    }
-
-    std::vector<int> slots;
-    for (int slot = 0; slot < kSlotsPerBar; ++slot)
-        if (onset[static_cast<size_t>(slot)])
-            slots.push_back(slot);
+    const auto bar = buildFigureBar(ctx, StyleRole::Arp, density,
+                                    options.followSourceRhythm || options.useGrooveDonor);
+    const auto& slots = bar.slots;
     if (slots.empty())
         return out;
 
@@ -1067,12 +1122,12 @@ NoteSequence writePattern(Context& ctx)
     // ---- 3. Lay the figure down, bar after bar -----------------------------
     const int octaveBase = ((ctx.lowPitch + ctx.highPitch) / 2 / 12) * 12 - 12;
 
-    for (int bar = 0; bar * ctx.barTicks < ctx.totalTicks; ++bar)
+    for (int repeat = 0; repeat * ctx.barTicks < ctx.totalTicks; ++repeat)
     {
         // How much this repeat departs from the figure. The first time round is
         // always the figure itself - you have to hear it before you hear it
         // change.
-        const float departure = bar == 0 ? 0.0f : vary;
+        const float departure = repeat == 0 ? 0.0f : vary;
         const bool liftOctave = departure > 0.45f && ctx.rng.chance(0.25f * departure);
 
         for (size_t i = 0; i < slots.size(); ++i)
@@ -1083,7 +1138,7 @@ NoteSequence writePattern(Context& ctx)
             if (slots[i] != 0 && ctx.rng.chance(0.22f * departure))
                 continue;
 
-            int64_t start = bar * ctx.barTicks + slots[i] * slotTicks;
+            int64_t start = repeat * ctx.barTicks + slots[i] * slotTicks;
 
             // A push off the grid, at most a 16th late, never on the downbeat.
             if (slots[i] != 0 && ctx.rng.chance(0.18f * departure))
@@ -1148,14 +1203,14 @@ NoteSequence writePattern(Context& ctx)
 
             const int64_t lengthTicks = std::max<int64_t>(
                 slotTicks / 2,
-                slotTicks * std::max(1, lengthSlots[static_cast<size_t>(slots[i])]));
+                slotTicks * std::max(1, bar.lengthSlots[static_cast<size_t>(slots[i])]));
 
             Note note;
             note.startTick = start;
             note.lengthTick = std::min(lengthTicks, ctx.totalTicks - start);
             note.pitch = pitch;
-            note.velocity = std::clamp(velocity[static_cast<size_t>(slots[i])] > 0
-                                           ? velocity[static_cast<size_t>(slots[i])]
+            note.velocity = std::clamp(bar.velocity[static_cast<size_t>(slots[i])] > 0
+                                           ? bar.velocity[static_cast<size_t>(slots[i])]
                                            : options.baseVelocity,
                                        1, 127);
             note.channel = options.channel;
@@ -1167,127 +1222,150 @@ NoteSequence writePattern(Context& ctx)
     return out;
 }
 
+/** An Arp: the chord spelled out, but as a figure that repeats.
+
+    It used to re-derive everything on every step, and the numbers said so:
+    eight bars over `Am F C G` came out as eight different interval shapes and
+    six different rhythmic grids. Three things caused it. The traversal index
+    ran continuously and never restarted on the bar, so where a run began
+    depended on how many steps had happened before it. The list of chord tones
+    was rebuilt per chord and changed length, so `index % size` landed somewhere
+    different each time. And rests were rolled per step rather than per bar.
+
+    An arpeggio is recognisable because it repeats. So the bar is decided once -
+    the same rhythm every time - and so is the traversal, as a run of positions
+    rather than of pitches. Each position resolves against whatever chord is
+    sounding: position 0 is that chord's root, 1 its third, 2 its fifth, and
+    beyond that the same tones an octave up. The motion is identical over every
+    chord while the notes follow the harmony, which is exactly what an
+    arpeggiator has always done.
+
+    That is also the line between this and the Pattern. Both keep a figure; the
+    Arp's figure is positions in the chord, so every note belongs to the chord,
+    and the Pattern's is degrees of the key, so it can sit outside the chord and
+    let the harmony move under it. */
 NoteSequence writeArp(Context& ctx)
 {
     NoteSequence out;
     const auto& options = *ctx.options;
 
-    const int64_t step = options.density < 0.45f ? std::max<int64_t>(1, ctx.beatTicks / 2)
-                                                 : std::max<int64_t>(1, ctx.beatTicks / 4);
-    const double gate = 0.55 + 0.35 * (1.0 - static_cast<double>(options.density));
-    const int slotsPerBar = 16;
-    const int64_t gridSlot = std::max<int64_t>(1, ctx.barTicks / slotsPerBar);
+    const float density = std::clamp(options.density, 0.0f, 1.0f);
+    const float vary = std::clamp(options.motifDevelopment, 0.0f, 1.0f);
+    const int64_t slotTicks = std::max<int64_t>(1, ctx.barTicks / FigureBar::kSlots);
+    const double gate = 0.55 + 0.35 * (1.0 - static_cast<double>(density));
 
-    // An arp is a figure, not a phrase: the run itself has to stay regular or it
-    // stops being an arp. So a new seed does not scramble the notes - it picks a
-    // different figure over the same chords. Without these the pattern is fully
-    // determined by the chord and the seed changes nothing at all, which is
-    // exactly how it behaved before.
-    const int rotation = ctx.rng.range(0, 7);              // where the run starts
-    const int octaveSpan = ctx.rng.chance(0.4f) ? 2 : 1;   // how far it reaches
-    const bool liftCycles = ctx.rng.chance(0.35f);         // octave jump each cycle
-    const int cycleLength = ctx.rng.range(3, 8);
-    const float restChance = 0.06f * ctx.rng.unit() * (1.0f - options.density);
+    // A new seed picks a different figure over the same chords rather than
+    // scrambling the notes: where the run starts and how far it reaches.
+    const int rotation = ctx.rng.range(0, 7);
+    const int octaveSpan = ctx.rng.chance(0.4f) ? 2 : 1;
 
-    // How much the groove under the plugin - the source clip, a donor, or the
-    // learned corpus - is allowed to shape the accents. The run stays even; only
-    // its weight moves, which is what makes an arp sit in a track instead of on
-    // top of it.
-    float grooveInfluence = 0.0f;
-    if (options.followSourceRhythm || options.useGrooveDonor || options.companion != nullptr)
+    const auto bar = buildFigureBar(ctx, StyleRole::Arp, density,
+                                    options.followSourceRhythm || options.useGrooveDonor);
+    const auto& slots = bar.slots;
+    if (slots.empty())
+        return out;
+
+    // ---- The traversal, decided once for the bar ---------------------------
+    // Positions, not pitches. A triad per octave is the nominal run; a chord
+    // with a seventh in it simply reaches its extra tone before wrapping.
+    const int span = std::max(2, 3 * octaveSpan);
+    const bool ascending = options.arpPattern != ArpPattern::Down
+                        && options.arpPattern != ArpPattern::DownUp;
+
+    std::vector<int> run;
+    run.reserve(slots.size());
     {
-        int activeSlots = 0;
-        for (float value : ctx.rhythm.grid)
-            if (value > 0.15f)
-                ++activeSlots;
-        grooveInfluence = activeSlots >= 4 ? (options.useGrooveDonor ? 0.75f : 0.5f)
-                                           : (activeSlots >= 2 ? 0.3f : 0.0f);
-    }
-    if (grooveInfluence <= 0.0f && ctx.useStyle(StyleRole::Arp))
-    {
-        const float targetOnsets = 4.0f + 8.0f * std::clamp(options.density, 0.0f, 1.0f);
-        if (const auto* learned = pickPattern(*ctx.style(), StyleRole::Arp, targetOnsets, ctx.rng))
+        int index = rotation;
+        for (size_t i = 0; i < slots.size(); ++i, ++index)
         {
-            grooveInfluence = 0.55f;
-            for (int slot = 0; slot < slotsPerBar; ++slot)
-                ctx.rhythm.grid[static_cast<size_t>(slot)] =
-                    learned->hasOnset(slot)
-                        ? std::clamp(static_cast<float>(learned->velocity[static_cast<size_t>(slot)]) / 127.0f,
-                                     0.2f, 1.0f)
-                        : 0.0f;
+            int position = 0;
+            switch (options.arpPattern)
+            {
+                case ArpPattern::Up:      position = index % span; break;
+                case ArpPattern::Down:    position = span - 1 - (index % span); break;
+                // Rolled once into the figure rather than per note: a run that
+                // is random every time it comes round is not a figure at all,
+                // it is noise that happens to be in key.
+                case ArpPattern::Random:  position = ctx.rng.range(0, span - 1); break;
+                case ArpPattern::Converge:
+                {
+                    const int half = index % span;
+                    position = (half % 2 == 0) ? half / 2 : span - 1 - half / 2;
+                    break;
+                }
+                case ArpPattern::UpDown:
+                case ArpPattern::DownUp:
+                default:
+                {
+                    const int period = std::max(1, span * 2 - 2);
+                    const int at = index % period;
+                    position = at < span ? at : period - at;
+                    if (! ascending)
+                        position = span - 1 - position;
+                    break;
+                }
+            }
+            run.push_back(std::clamp(position, 0, span - 1));
         }
     }
 
-    int index = rotation;
-    bool ascending = options.arpPattern != ArpPattern::Down && options.arpPattern != ArpPattern::DownUp;
-
-    for (int64_t t = 0; t < ctx.totalTicks; t += step, ++index)
+    // ---- Lay it down, bar after bar ----------------------------------------
+    for (int repeat = 0; repeat * ctx.barTicks < ctx.totalTicks; ++repeat)
     {
-        const auto& segment = ctx.chordAt(t);
-        Chord chord = extendChord(segment.chord, ctx.key, options.complexity);
+        const float departure = repeat == 0 ? 0.0f : vary;
+        const bool liftOctave = departure > 0.45f && ctx.rng.chance(0.25f * departure);
 
-        // Spread the chord tones across the available register.
-        std::vector<int> tones;
-        const int ceiling = octaveSpan >= 2
-                                ? ctx.highPitch
-                                : std::min(ctx.highPitch, ctx.lowPitch + 14);
-        for (int pitch = ctx.lowPitch; pitch <= ceiling; ++pitch)
-            if (chord.containsPitchClass(pitch))
-                tones.push_back(pitch);
-        if (tones.empty())
-            continue;
-
-        const int size = static_cast<int>(tones.size());
-        int toneIndex = 0;
-        switch (options.arpPattern)
+        for (size_t i = 0; i < slots.size(); ++i)
         {
-            case ArpPattern::Up:      toneIndex = index % size; break;
-            case ArpPattern::Down:    toneIndex = size - 1 - (index % size); break;
-            case ArpPattern::Random:  toneIndex = ctx.rng.range(0, size - 1); break;
-            case ArpPattern::Converge:
-            {
-                const int half = index % size;
-                toneIndex = (half % 2 == 0) ? half / 2 : size - 1 - half / 2;
-                break;
-            }
-            case ArpPattern::UpDown:
-            case ArpPattern::DownUp:
-            default:
-            {
-                const int period = std::max(1, size * 2 - 2);
-                const int position = index % period;
-                toneIndex = position < size ? position : period - position;
-                if (! ascending)
-                    toneIndex = size - 1 - toneIndex;
-                break;
-            }
+            // Never the downbeat: a hole there reads as a mistake rather than
+            // as a figure breathing.
+            if (slots[i] != 0 && ctx.rng.chance(0.22f * departure))
+                continue;
+
+            int64_t start = repeat * ctx.barTicks + slots[i] * slotTicks;
+            if (slots[i] != 0 && ctx.rng.chance(0.18f * departure))
+                start += slotTicks / 2;
+            if (start >= ctx.totalTicks)
+                continue;
+
+            const auto& segment = ctx.chordAt(start);
+            const Chord chord = extendChord(segment.chord, ctx.key, options.complexity);
+            const auto tones = chord.pitchClasses();
+            if (tones.empty())
+                continue;
+
+            const int count = static_cast<int>(tones.size());
+            const int ordinal = run[i] % count;
+            const int octave = run[i] / count;
+
+            // Stacked upward from this chord's root, so the run reads as the
+            // chord and not as a scatter of its notes.
+            const int root = nearestPitchWithClass(tones[0], ctx.lowPitch + 6);
+            int pitch = nearestPitchWithClass(tones[static_cast<size_t>(ordinal)], root);
+            if (pitch < root)
+                pitch += 12;
+            pitch += 12 * octave;
+            if (liftOctave)
+                pitch += 12;
+            pitch = clampPitch(pitch, ctx.lowPitch, ctx.highPitch);
+
+            const int held = std::clamp(bar.lengthSlots[static_cast<size_t>(slots[i])], 1, 2);
+            Note note;
+            note.startTick = start;
+            note.lengthTick = std::max<int64_t>(
+                1, std::min(static_cast<int64_t>(static_cast<double>(slotTicks * held) * gate),
+                            ctx.totalTicks - start));
+            note.pitch = pitch;
+            note.velocity = std::clamp(bar.velocity[static_cast<size_t>(slots[i])] > 0
+                                           ? bar.velocity[static_cast<size_t>(slots[i])]
+                                           : options.baseVelocity,
+                                       1, 127);
+            note.channel = options.channel;
+            out.notes.push_back(note);
         }
-        toneIndex = std::clamp(toneIndex, 0, size - 1);
-
-        const int slot = static_cast<int>((t % ctx.barTicks) / gridSlot);
-        const float positional = slotWeight(slot);
-        const float groove = ctx.rhythm.grid.empty()
-                                 ? positional
-                                 : ctx.rhythm.grid[static_cast<size_t>(slot % slotsPerBar)];
-        const float weight = positional * (1.0f - grooveInfluence) + groove * grooveInfluence;
-
-        // Never drop a downbeat - a hole there reads as a mistake, not a figure.
-        if (slot != 0 && restChance > 0.0f && ctx.rng.chance(restChance * (1.0f - weight)))
-            continue;
-
-        Note note;
-        note.startTick = t;
-        note.lengthTick = std::max<int64_t>(1, static_cast<int64_t>(static_cast<double>(step) * gate));
-        note.pitch = tones[static_cast<size_t>(toneIndex)];
-        if (liftCycles && (index / std::max(1, cycleLength)) % 2 == 1
-            && note.pitch + 12 <= ctx.highPitch)
-            note.pitch += 12;
-        note.velocity = std::clamp(static_cast<int>(static_cast<float>(options.baseVelocity)
-                                                    * (0.72f + 0.28f * weight)),
-                                   1, 127);
-        note.channel = options.channel;
-        out.notes.push_back(note);
     }
+
+    out.sort();
     return out;
 }
 

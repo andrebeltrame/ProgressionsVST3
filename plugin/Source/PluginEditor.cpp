@@ -580,7 +580,7 @@ void ProgressionsEditor::refresh()
     // repeating figure as of a melody - for the Pattern it is what keeps the
     // repeats from being copies.
     const bool melodicPart = part == PartType::Melody || part == PartType::CounterMelody
-                          || part == PartType::Pattern;
+                          || part == PartType::Pattern || part == PartType::Arp;
     craftKnob.slider.setEnabled(melodicPart);
     craftKnob.label.setEnabled(melodicPart);
     followKnob.slider.setEnabled(part == PartType::Pattern);
