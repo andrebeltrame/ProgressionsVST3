@@ -22,6 +22,7 @@ const char* toString(PartType part)
         case PartType::Arp:           return "Arp";
         case PartType::Pluck:         return "Pluck";
         case PartType::Sub:           return "Sub";
+        case PartType::Pattern:       return "Pattern";
     }
     return "Pad";
 }
@@ -41,6 +42,7 @@ bool partTypeFromString(const std::string& text, PartType& out)
     if (lower == "reese" || lower == "drone")              { out = PartType::Reese; return true; }
     if (lower == "sub" || lower == "subbass" || lower == "808") { out = PartType::Sub; return true; }
     if (lower == "arp" || lower == "arpeggio")             { out = PartType::Arp; return true; }
+    if (lower == "pattern" || lower == "seq" || lower == "sequence") { out = PartType::Pattern; return true; }
     if (lower == "pluck" || lower == "pluk" || lower == "stab") { out = PartType::Pluck; return true; }
     return false;
 }
@@ -63,6 +65,9 @@ void defaultRange(PartType part, int& lowPitch, int& highPitch)
         // stops being a sub; if it needs to sit somewhere else, that is what
         // the octave shift is for.
         case PartType::Sub:           lowPitch = 24; highPitch = 36; break;
+        // Lower and wider than the arp: a figure needs room to have a shape,
+        // and it usually sits under the lead rather than on top of it.
+        case PartType::Pattern:       lowPitch = 55; highPitch = 84; break;
     }
 }
 
@@ -442,6 +447,7 @@ void adjustRangeForSource(Context& ctx, PartType part)
 
         case PartType::Arp:
         case PartType::Pluck:
+        case PartType::Pattern:
             if (role == SourceRole::Bass)
                 ctx.lowPitch = std::max(ctx.lowPitch, rhythm.highestPitch + 4);
             break;
@@ -923,6 +929,241 @@ NoteSequence writeSub(Context& ctx)
         }
     }
 
+    return out;
+}
+
+/** A Pattern: one figure, invented once and then repeated.
+
+    This is the part an arpeggio cannot be. An arpeggio reads the chord and
+    spells it out, so when the chord changes the notes change and nothing
+    survives the bar - which is why eight bars of it come out as eight different
+    shapes. A pattern is the other way round: the figure is decided first, it
+    repeats, and the harmony moves underneath it. The shape is the part.
+
+    Three things go into the figure, and with a library learned all three come
+    from the user's own records rather than from anything invented here.
+
+    **The rhythm** is one learned bar - not just where the notes fall but the
+    velocity and the note length on each 16th, which is most of what separates a
+    figure that breathes from a grid that ticks.
+
+    **The contour** is walked in *scale steps* rather than semitones, through the
+    step transitions learned from the corpus. That is what "follows the notes"
+    means here, and it is a property of the construction rather than a filter
+    run afterwards: a figure written in degrees of the key has no way to leave
+    the key.
+
+    **The variation** keeps the repeats from being a loop. `motifDevelopment`
+    decides how much: at zero the bar repeats literally, and turned up the figure
+    drops a note, nudges one off the grid, or lifts a run an octave - the same
+    devices a player uses on the fourth time round.
+
+    `followChords` decides how much each repeat is bent to the chord under it.
+    Everything here has a path that works with no library at all; that is not a
+    fallback waiting to be tidied away, it is what a fresh installation runs. */
+NoteSequence writePattern(Context& ctx)
+{
+    NoteSequence out;
+    const auto& options = *ctx.options;
+
+    constexpr int kSlotsPerBar = 16;
+    const int64_t slotTicks = std::max<int64_t>(1, ctx.barTicks / kSlotsPerBar);
+    const float density = std::clamp(options.density, 0.0f, 1.0f);
+    const float vary = std::clamp(options.motifDevelopment, 0.0f, 1.0f);
+    const float follow = std::clamp(options.followChords, 0.0f, 1.0f);
+
+    // ---- 1. The rhythm of the figure, one bar of it ------------------------
+    std::array<bool, kSlotsPerBar> onset { };
+    std::array<int, kSlotsPerBar> velocity { };
+    std::array<int, kSlotsPerBar> lengthSlots { };
+
+    const RhythmPattern* learned = nullptr;
+    if (ctx.useStyle(StyleRole::Arp))
+    {
+        const float targetOnsets = 3.0f + 9.0f * density;
+        learned = pickPattern(*ctx.style(), StyleRole::Arp, targetOnsets, ctx.rng);
+    }
+
+    if (learned != nullptr)
+    {
+        for (int slot = 0; slot < kSlotsPerBar; ++slot)
+        {
+            onset[static_cast<size_t>(slot)] = learned->hasOnset(slot);
+            velocity[static_cast<size_t>(slot)] = learned->velocity[static_cast<size_t>(slot)];
+            lengthSlots[static_cast<size_t>(slot)] = learned->lengthSlots[static_cast<size_t>(slot)];
+        }
+    }
+    else
+    {
+        // Nothing learned: build a bar that at least lands where a figure lands.
+        // Strong 16ths first, then the offbeats as the density comes up.
+        static const int kOrder[kSlotsPerBar] = { 0, 8, 4, 12, 2, 6, 10, 14, 3, 11, 7, 15, 1, 9, 5, 13 };
+        const int wanted = std::clamp(2 + static_cast<int>(std::lround(10.0f * density)), 2, kSlotsPerBar);
+        for (int i = 0; i < wanted; ++i)
+        {
+            const int slot = kOrder[i];
+            onset[static_cast<size_t>(slot)] = true;
+            velocity[static_cast<size_t>(slot)] = slot % 4 == 0 ? 104 : (slot % 2 == 0 ? 92 : 80);
+            lengthSlots[static_cast<size_t>(slot)] = 1 + (ctx.rng.chance(0.3f) ? 1 : 0);
+        }
+    }
+
+    std::vector<int> slots;
+    for (int slot = 0; slot < kSlotsPerBar; ++slot)
+        if (onset[static_cast<size_t>(slot)])
+            slots.push_back(slot);
+    if (slots.empty())
+        return out;
+
+    // ---- 2. The contour, in scale steps ------------------------------------
+    // Degrees relative to the tonic. Written this way the figure transposes to
+    // any key for free and can never land outside it.
+    std::vector<int> degrees;
+    degrees.reserve(slots.size());
+    {
+        int degree = ctx.rng.range(0, 4);
+        int previousStep = 1;
+        // A direction that persists, and turns when the run has gone far
+        // enough. Without it the walk reverses on almost every note and the
+        // figure comes out a tremble around one pitch rather than a shape.
+        int direction = ctx.rng.chance(0.5f) ? 1 : -1;
+        int sinceTurn = 0;
+
+        for (size_t i = 0; i < slots.size(); ++i)
+        {
+            degrees.push_back(degree);
+
+            int step;
+            if (ctx.useStyle(StyleRole::Melody))
+            {
+                step = sampleStep(*ctx.style(), previousStep, ctx.rng, direction);
+            }
+            else
+            {
+                if (ctx.rng.chance(0.10f + 0.13f * static_cast<float>(sinceTurn)))
+                {
+                    direction = -direction;
+                    sinceTurn = 0;
+                }
+                // Mostly one step, sometimes two, rarely a third - and now and
+                // then the same note again, which is as much a part of a figure
+                // as any movement.
+                step = ctx.rng.chance(0.15f)
+                           ? 0
+                           : direction * (1 + std::max(0, ctx.rng.weighted({ 6.0f, 2.5f, 1.0f })));
+                ++sinceTurn;
+            }
+
+            degree += step;
+            previousStep = step;
+
+            // Turn at the edges rather than piling up against them: a figure
+            // that wanders off is a melody, and there is already one of those.
+            if (degree > 12) { degree = 12; direction = -1; }
+            if (degree < -5) { degree = -5; direction = 1; }
+        }
+    }
+
+    // ---- 3. Lay the figure down, bar after bar -----------------------------
+    const int octaveBase = ((ctx.lowPitch + ctx.highPitch) / 2 / 12) * 12 - 12;
+
+    for (int bar = 0; bar * ctx.barTicks < ctx.totalTicks; ++bar)
+    {
+        // How much this repeat departs from the figure. The first time round is
+        // always the figure itself - you have to hear it before you hear it
+        // change.
+        const float departure = bar == 0 ? 0.0f : vary;
+        const bool liftOctave = departure > 0.45f && ctx.rng.chance(0.25f * departure);
+
+        for (size_t i = 0; i < slots.size(); ++i)
+        {
+            // Drop a note now and then, which is what keeps a repeat from being
+            // a copy. Never the first note of the bar: that is the anchor the
+            // ear uses to recognise the figure at all.
+            if (slots[i] != 0 && ctx.rng.chance(0.22f * departure))
+                continue;
+
+            int64_t start = bar * ctx.barTicks + slots[i] * slotTicks;
+
+            // A push off the grid, at most a 16th late, never on the downbeat.
+            if (slots[i] != 0 && ctx.rng.chance(0.18f * departure))
+                start += slotTicks / 2;
+            if (start >= ctx.totalTicks)
+                continue;
+
+            int pitch = ctx.key.pitchForDegree(degrees[i], octaveBase);
+            if (liftOctave)
+                pitch += 12;
+
+            // Bend it to the chord only where it actually clashes. A note that
+            // belongs to the key but not to the chord is how melody has always
+            // worked; pulling every one of them onto a chord tone erases the
+            // figure, which is the single thing this part exists to keep. The
+            // first version did exactly that and every bar collapsed onto the
+            // two notes the chords had in common.
+            const auto& segment = ctx.chordAt(start);
+            const int pitchClass = mod12(pitch);
+            if (! segment.chord.containsPitchClass(pitchClass))
+            {
+                // Two different things can be wrong with a note over a chord and
+                // they do not deserve the same treatment. A semitone against a
+                // chord tone is a clash, and gets resolved even at a low
+                // setting. Anything else is a passing note - the ordinary
+                // material of melody - and only moves as the setting nears the
+                // top, where this part is deliberately becoming an arpeggio.
+                // Treating the two alike is what collapsed a stepwise figure
+                // onto the triad and turned it into the very thing it is not.
+                const bool clash = segment.chord.containsPitchClass(mod12(pitchClass + 1))
+                                || segment.chord.containsPitchClass(mod12(pitchClass + 11));
+                const bool strong = slots[i] % 4 == 0;
+
+                // Four cases, ordered by how much each one deserves to move,
+                // and every one of them a power of the same number - so the
+                // ordering holds all the way up while the top of the dial still
+                // means *everything* lands on a chord tone. An earlier version
+                // hard-zeroed the mildest case, and at full follow the part
+                // still had notes off the chord.
+                const float f2 = follow * follow;
+                const float pull = clash ? (strong ? follow : f2)
+                                         : (strong ? f2 * follow : f2 * f2);
+                if (ctx.rng.chance(pull))
+                {
+                    int best = pitch;
+                    int bestDistance = 128;
+                    for (int tone : segment.chord.pitchClasses())
+                    {
+                        const int candidate = nearestPitchWithClass(tone, pitch);
+                        const int distance = std::abs(candidate - pitch);
+                        if (distance < bestDistance)
+                        {
+                            bestDistance = distance;
+                            best = candidate;
+                        }
+                    }
+                    pitch = best;
+                }
+            }
+
+            pitch = clampPitch(ctx.key.snapToScale(pitch, 0), ctx.lowPitch, ctx.highPitch);
+
+            const int64_t lengthTicks = std::max<int64_t>(
+                slotTicks / 2,
+                slotTicks * std::max(1, lengthSlots[static_cast<size_t>(slots[i])]));
+
+            Note note;
+            note.startTick = start;
+            note.lengthTick = std::min(lengthTicks, ctx.totalTicks - start);
+            note.pitch = pitch;
+            note.velocity = std::clamp(velocity[static_cast<size_t>(slots[i])] > 0
+                                           ? velocity[static_cast<size_t>(slots[i])]
+                                           : options.baseVelocity,
+                                       1, 127);
+            note.channel = options.channel;
+            out.notes.push_back(note);
+        }
+    }
+
+    out.sort();
     return out;
 }
 
@@ -1620,6 +1861,7 @@ NoteSequence generate(const Analysis& analysis, const NoteSequence& source, cons
         case PartType::Pluck:         out.notes = writePluck(ctx).notes; break;
         case PartType::Reese:         out.notes = writeReese(ctx).notes; break;
         case PartType::Sub:           out.notes = writeSub(ctx).notes; break;
+        case PartType::Pattern:       out.notes = writePattern(ctx).notes; break;
         case PartType::Melody:        out.notes = writeMelodicLine(ctx, false).notes; break;
         case PartType::CounterMelody: out.notes = writeMelodicLine(ctx, true).notes; break;
     }

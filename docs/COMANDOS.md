@@ -142,6 +142,14 @@ tempo — se for o seu caso, peça sem sobreposição:
 ./build/cli/harmonia-cli resources/examples/bass_loop.mid --part reese --no-glide --out ~/ideias
 ```
 
+O **Pattern** inventa uma figura e a repete, com os acordes passando por baixo.
+O `--follow-chords` decide o quanto ela cede à harmonia — 0 mantém a figura
+intacta, 1 puxa tudo para as notas do acorde e vira arpejo:
+
+```bash
+./build/cli/harmonia-cli --progression "Am | F | C | G" --key "A minor" --part pattern --follow-chords 0.2 --out ~/ideias
+```
+
 O **Sub** é outra parte, não um Reese mais grave: fundamental do acorde, uma
 oitava só, nunca duas notas juntas. O `--density` decide se ele segura ou repete:
 

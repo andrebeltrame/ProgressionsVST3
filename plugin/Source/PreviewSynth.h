@@ -47,6 +47,9 @@ inline const PreviewCharacter& previewCharacter(int index)
         // Sub - one oscillator, no detune, as close to a sine as this gets, and
         // a short release so two roots never ring into each other down there.
         { 0.006f, 0.20f, 0.98f, 0.10f, 1.0000f, 0.12f, 1.35f }, // Sub
+        // Pattern - a shade rounder and longer than the pluck, so a repeating
+        // figure reads as one voice rather than a row of clicks.
+        { 0.005f, 0.14f, 0.45f, 0.22f, 1.0020f, 1.20f, 0.92f }, // Pattern
     };
     constexpr int count = static_cast<int>(std::size(characters));
     return characters[juce::jlimit(0, count - 1, index)];

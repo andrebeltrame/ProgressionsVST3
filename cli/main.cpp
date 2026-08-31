@@ -267,6 +267,8 @@ void printUsage()
         "  --chords-per-bar <n> force the harmonic grid of the analysis\n"
         "  --key <name>         force the key, e.g. \"F# minor\", \"Bb major\", \"D dorian\"\n"
         "  --reharm <0..1>      reharmonise before writing\n"
+        "  --follow-chords <0..1> pattern: how far the figure bends to the chord\n"
+        "                       under it. 0 keeps its notes, 1 makes it an arpeggio\n"
         "  --no-glide           reese: end each note where the next begins, so\n"
         "                       nothing overlaps and nothing sums on a poly patch\n"
         "  --no-follow          ignore the source groove\n"
@@ -905,6 +907,7 @@ int runGenerate(const std::vector<std::string>& args)
         else if (arg == "--voices")                    generateOptions.maxVoices = std::stoi(value());
         else if (arg == "--chords-per-bar")            analysisOptions.chordsPerBar = std::stoi(value());
         else if (arg == "--reharm")                    reharm = std::stof(value());
+        else if (arg == "--follow-chords")             generateOptions.followChords = std::stof(value());
         else if (arg == "--no-glide")                  generateOptions.glide = false;
         else if (arg == "--no-follow")                 generateOptions.followSourceRhythm = false;
         else if (arg == "--no-avoid")                  generateOptions.avoidSourceCollisions = false;

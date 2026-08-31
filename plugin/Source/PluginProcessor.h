@@ -36,10 +36,11 @@ constexpr const char* accidentals = "accidentals";
 constexpr const char* meter = "meter";
 constexpr const char* reharmAmount = "reharmAmount";
 constexpr const char* glide = "glide";
+constexpr const char* followChords = "followChords";
 } // namespace ParamID
 
 /** Every part the plugin can write, in the order the tabs show them. */
-static constexpr int kNumParts = 9;
+static constexpr int kNumParts = 10;
 
 /** The plugin: holds the analysis engine, renders the generated part and plays
     it back through MIDI out and a built-in preview voice. */

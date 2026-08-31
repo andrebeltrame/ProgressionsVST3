@@ -14,7 +14,7 @@ namespace
 {
 
 const juce::StringArray kPartNames { "Pad", "Chords", "Melody", "Counter Melody", "Bass", "Reese",
-                                     "Arp", "Pluck", "Sub" };
+                                     "Arp", "Pluck", "Sub", "Pattern" };
 const juce::StringArray kBarChoices { "As source", "1", "2", "4", "8", "16" };
 const juce::StringArray kArpChoices { "Up", "Down", "Up-Down", "Down-Up", "Converge", "Random" };
 const juce::StringArray kHarmonyChoices { "Auto", "1 per bar", "2 per bar", "1 per beat" };
@@ -124,6 +124,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout ProgressionsProcessor::creat
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { ParamID::reharmAmount, 1 }, "Reharmonise Amount",
                                                      NormalisableRange<float> { 0.0f, 1.0f }, 0.5f, percentAttributes));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { ParamID::glide, 1 }, "Reese Glide", true));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { ParamID::followChords, 1 }, "Follow Chords",
+                                                     NormalisableRange<float> { 0.0f, 1.0f }, 0.5f,
+                                                     percentAttributes));
 
     return layout;
 }
@@ -137,7 +140,7 @@ ProgressionsProcessor::ProgressionsProcessor()
                             ParamID::follow, ParamID::avoid, ParamID::arpPattern,
                             ParamID::harmonicRhythm, ParamID::useStyle, ParamID::styleAmount,
                             ParamID::stackParts, ParamID::accidentals, ParamID::meter,
-                            ParamID::glide })
+                            ParamID::glide, ParamID::followChords })
         apvts.addParameterListener(id, this);
 
     previewSynth.addSound(new PreviewSound());
@@ -161,7 +164,7 @@ ProgressionsProcessor::~ProgressionsProcessor()
                             ParamID::follow, ParamID::avoid, ParamID::arpPattern,
                             ParamID::harmonicRhythm, ParamID::useStyle, ParamID::styleAmount,
                             ParamID::stackParts, ParamID::accidentals, ParamID::meter,
-                            ParamID::glide })
+                            ParamID::glide, ParamID::followChords })
         apvts.removeParameterListener(id, this);
 
     if (dragFile.existsAsFile())
@@ -477,6 +480,7 @@ harmonia::GenerateOptions ProgressionsProcessor::currentOptions() const
     options.avoidSourceCollisions = apvts.getRawParameterValue(ParamID::avoid)->load() > 0.5f;
     options.arpPattern = static_cast<ArpPattern>(juce::jlimit(0, 5, static_cast<int>(apvts.getRawParameterValue(ParamID::arpPattern)->load())));
     options.glide = apvts.getRawParameterValue(ParamID::glide)->load() > 0.5f;
+    options.followChords = apvts.getRawParameterValue(ParamID::followChords)->load();
     options.channel = 0;
 
     if (! styleModel.empty() && apvts.getRawParameterValue(ParamID::useStyle)->load() > 0.5f)

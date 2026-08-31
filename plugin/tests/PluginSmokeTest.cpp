@@ -417,8 +417,13 @@ int main(int argc, char** argv)
 
     // ---- The Sub is one voice on the root --------------------------------------
     {
+        // Named, not counted. This said kNumParts - 1 until a part was appended
+        // after the Sub, and then it quietly started asserting the Sub's rules
+        // against a different part - which is the exact mistake the comment in
+        // the editor warns about.
         auto* parameter = processor.apvts.getParameter(ParamID::part);
-        parameter->setValueNotifyingHost(parameter->convertTo0to1(static_cast<float>(kNumParts - 1)));
+        parameter->setValueNotifyingHost(
+            parameter->convertTo0to1(static_cast<float>(harmonia::PartType::Sub)));
         processor.apvts.getParameter(ParamID::density)->setValueNotifyingHost(1.0f);
         processor.regenerate();
 
@@ -572,8 +577,15 @@ int main(int argc, char** argv)
     // ---- Editor ---------------------------------------------------------------
     {
         // Pin one chord before rendering, so the picture shows both states of
-        // the padlock rather than four identical chips.
+        // the padlock rather than four identical chips, and open the newest
+        // part - the screenshot is what the documentation ships.
         processor.toggleChordLock(1);
+        {
+            auto* selected = processor.apvts.getParameter(ParamID::part);
+            selected->setValueNotifyingHost(
+                selected->convertTo0to1(static_cast<float>(harmonia::PartType::Pattern)));
+            processor.regenerate();
+        }
 
         std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
         check(editor != nullptr, "editor is created");

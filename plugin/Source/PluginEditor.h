@@ -85,7 +85,7 @@ private:
     std::unique_ptr<juce::ParameterAttachment> partAttachment;
 
     Knob densityKnob, complexityKnob, humanizeKnob, swingKnob, octaveKnob, voicesKnob, craftKnob, styleKnob,
-         reharmKnob;
+         reharmKnob, followKnob;
 
     juce::ComboBox lengthBox, arpBox, harmonyBox, keyRootBox, keyModeBox, meterBox, accidentalBox;
     juce::Label lengthLabel { {}, "Length" }, arpLabel { {}, "Arp shape" },

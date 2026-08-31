@@ -25,12 +25,13 @@ enum class PartType
     // Appended rather than filed next to Bass and Reese, where it belongs
     // musically: the plugin stores the selected part as an index, so inserting
     // one in the middle would reopen every saved project on a different part.
-    Sub            // the fundamental and nothing else, one octave, never two at once
+    Sub,           // the fundamental and nothing else, one octave, never two at once
+    Pattern        // one figure, invented once and repeated, the harmony moving under it
 };
 
 const char* toString(PartType part);
-/** Parses "pad", "chords", "melody", "counter", "bass", "reese", "sub", "arp".
-    Returns false if unknown. */
+/** Parses "pad", "chords", "melody", "counter", "bass", "reese", "sub", "arp",
+    "pattern". Returns false if unknown. */
 bool partTypeFromString(const std::string& text, PartType& out);
 
 enum class ArpPattern
@@ -96,6 +97,15 @@ struct GenerateOptions
     int baseVelocity = 96;
 
     ArpPattern arpPattern = ArpPattern::UpDown;
+
+    /** Pattern only: how far each repeat of the figure bends to the chord under
+        it. At 0 the figure keeps its own notes and the harmony moves beneath -
+        which is the whole point of a pattern, and what an arpeggio can never do.
+        At 1 every note is pulled onto the nearest chord tone, which is an
+        arpeggio wearing the figure's rhythm. In between it is pulled only where
+        it lands on a strong 16th, so the shape survives and the downbeats agree
+        with the chord. */
+    float followChords = 0.5f;
 
     /** Reese only: let every note run past the start of the next one.
         A monophonic synth portamentos only between overlapping notes, so the

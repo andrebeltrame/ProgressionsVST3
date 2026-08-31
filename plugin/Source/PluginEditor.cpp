@@ -8,7 +8,7 @@ using namespace harmonia;
 namespace
 {
 const juce::StringArray kPartLabels { "Pad", "Chords", "Melody", "Counter", "Bass", "Reese",
-                                      "Arp", "Pluck", "Sub" };
+                                      "Arp", "Pluck", "Sub", "Pattern" };
 const juce::StringArray kModeNames { "Major", "Minor", "Dorian", "Mixolydian", "Lydian", "Phrygian", "Harmonic Minor" };
 
 harmonia::ScaleType scaleForModeIndex(int index)
@@ -185,6 +185,13 @@ ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
 
     buildKnob(reharmKnob, "Reharm", ParamID::reharmAmount);
     reharmKnob.slider.setTooltip("How much of the progression the Reharmonise button rewrites");
+
+    buildKnob(followKnob, "Follow", ParamID::followChords);
+    followKnob.slider.setTooltip("Pattern only. How far the figure bends to the chord under it. "
+                                 "At the bottom it keeps its own notes and the harmony moves "
+                                 "beneath - which is what a pattern is, and what an arpeggio can "
+                                 "never do. At the top every note is pulled onto a chord tone, "
+                                 "which is an arpeggio wearing the figure's rhythm.");
 
     // ---- Side panel controls -------------------------------------------------
     for (auto* label : { &lengthLabel, &arpLabel, &harmonyLabel, &levelLabel,
@@ -569,9 +576,15 @@ void ProgressionsEditor::refresh()
     const bool chordPart = part == PartType::Pad || part == PartType::Chords || part == PartType::Arp;
     voicesKnob.slider.setEnabled(chordPart);
     voicesKnob.label.setEnabled(chordPart);
-    const bool melodicPart = part == PartType::Melody || part == PartType::CounterMelody;
+    // Craft means "how hard it works its material", which is as true of a
+    // repeating figure as of a melody - for the Pattern it is what keeps the
+    // repeats from being copies.
+    const bool melodicPart = part == PartType::Melody || part == PartType::CounterMelody
+                          || part == PartType::Pattern;
     craftKnob.slider.setEnabled(melodicPart);
     craftKnob.label.setEnabled(melodicPart);
+    followKnob.slider.setEnabled(part == PartType::Pattern);
+    followKnob.label.setEnabled(part == PartType::Pattern);
     // The Sub plays roots and only roots, so extensions and chromatic movement
     // have nothing to act on. Saying so is better than a knob that does nothing.
     const bool colouredPart = part != PartType::Sub;
@@ -953,7 +966,7 @@ void ProgressionsEditor::resized()
         footer.removeFromTop(10);
 
         auto knobRow = footer.removeFromTop(90);
-        Knob* knobs[] = { &densityKnob, &complexityKnob, &craftKnob, &humanizeKnob,
+        Knob* knobs[] = { &densityKnob, &complexityKnob, &craftKnob, &followKnob, &humanizeKnob,
                           &swingKnob, &octaveKnob, &voicesKnob, &reharmKnob, &styleKnob };
         const int knobWidth = knobRow.getWidth() / static_cast<int>(std::size(knobs));
         for (auto* knob : knobs)

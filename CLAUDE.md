@@ -182,6 +182,40 @@ glide from a note to itself is nothing to hear, and a second note-on for a pitch
 already sounding leaves the synth with two ons and two offs for one voice, so
 the first off cuts the note short. There is a test for each.
 
+### A Pattern is a figure, an Arp is a chord spelled out
+
+`writePattern` exists because an arpeggio cannot be a figure. An arpeggio reads
+the chord and spells it, so when the chord changes the notes change: measured on
+`Am F C G`, eight bars of the Arp came out as eight different interval shapes and
+six different rhythmic grids. Nothing survived a bar. A pattern is the other way
+round - the figure is decided once, it repeats, and the harmony moves underneath.
+The shape is the part, and everything here exists to keep it.
+
+The contour is walked in **scale steps**, never semitones. Staying in the key is
+therefore a property of the construction and not a filter run afterwards: a
+figure written in degrees has no way to leave the key, whatever the settings do
+to it. There is a test that hammers this across seeds and every value of
+`followChords`.
+
+`followChords` sorts notes into four cases and pulls each towards a chord tone
+with a different probability - a semitone clash on a strong 16th most, a passing
+note on a weak one least. Every one of those probabilities is a power of the same
+number, which is what makes the ordering hold all the way up *and* the top of the
+dial still mean "everything lands on a chord tone". The first version hard-zeroed
+the mildest case and full follow still left notes off the chord. An earlier
+version was worse: it pulled every non-chord note, and since half of any key is a
+non-chord tone over a triad, a stepwise figure collapsed onto the triad - the
+part turned into the exact thing it exists not to be.
+
+The first bar is always the literal figure, whatever `motifDevelopment` is set
+to: you have to hear a figure before you can hear it change. Variation drops
+notes and nudges them off the grid, but never the note on the downbeat, which is
+what the ear uses to recognise the figure at all.
+
+Both paths through the rhythm and the contour work with no library at all. With
+one, the bar comes from `pickPattern` - onsets, velocities *and* note lengths, so
+the dynamics are the user's own - and the contour from `sampleStep`.
+
 ### The Sub is not a lower Reese
 
 They look adjacent and they are not the same idea. The Reese *moves* - a fifth,
@@ -209,6 +243,10 @@ inserting one in the middle would reopen every saved project on a different
 part. The smoke test walks all `kNumParts` and checks each writes notes - a part
 added to the enum but missed in a `switch` comes out silent, and nothing else
 notices.
+
+Anything that means a *particular* part must name it, never count to it. The
+Sub's "never two at once" check said `kNumParts - 1`, and the moment `Pattern`
+was appended it started asserting the Sub's rules against a different part.
 
 ### A locked chord is locked everywhere
 

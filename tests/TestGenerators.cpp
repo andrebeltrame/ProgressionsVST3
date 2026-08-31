@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <algorithm>
+#include <map>
 #include <set>
 
 using namespace harmonia;
@@ -695,4 +696,130 @@ TEST(SubHoldsWhenItIsToldTo)
 
     CHECK(held.notes.size() == engine.analysis().progression.size());
     CHECK(busiest > held.notes.size());
+}
+
+TEST(APatternRepeatsItsFigure)
+{
+    // The whole point of the part: one figure, laid down bar after bar. An
+    // arpeggio spells out each chord and so changes every bar; this must not.
+    auto engine = engineFromBassLine();
+    auto options = cleanOptions(PartType::Pattern);
+    options.motifDevelopment = 0.0f;   // no variation - the figure, literally
+    options.followChords = 0.0f;       // and nothing bending it to the chords
+    const auto part = engine.generate(options);
+    CHECK(! part.empty());
+
+    const int64_t barTicks = part.ticksPerBar();
+    CHECK(barTicks > 0);
+
+    std::map<int64_t, std::vector<std::pair<int64_t, int>>> bars;
+    for (const auto& note : part.notes)
+        bars[note.startTick / barTicks].emplace_back(note.startTick % barTicks, note.pitch);
+
+    CHECK(bars.size() >= 2);
+    const auto& first = bars.begin()->second;
+    for (const auto& [bar, notes] : bars)
+        CHECK(notes == first);
+}
+
+TEST(APatternCannotLeaveTheKey)
+{
+    // The contour is walked in scale steps rather than semitones, so staying in
+    // the key is a property of how the figure is built and not a filter run
+    // over it afterwards. Whatever the settings, nothing may fall outside.
+    auto engine = engineFromBassLine();
+    const auto& key = engine.analysis().key;
+
+    for (uint32_t seed = 1; seed <= 16; ++seed)
+    {
+        auto options = cleanOptions(PartType::Pattern);
+        options.seed = seed;
+        options.density = 0.85f;
+        options.motifDevelopment = 1.0f;
+        options.followChords = (static_cast<float>(seed % 5)) / 4.0f;
+        for (const auto& note : engine.generate(options).notes)
+            CHECK(key.contains(note.pitch % 12));
+    }
+}
+
+TEST(FollowChordsDecidesHowMuchTheFigureBends)
+{
+    // At the bottom the figure keeps its own notes and the harmony moves under
+    // it; at the top it is pulled onto chord tones and becomes an arpeggio
+    // wearing the figure's rhythm. The two ends have to actually differ.
+    auto engine = engineFromBassLine();
+    const auto& analysis = engine.analysis();
+
+    const auto offChordShare = [&analysis](const NoteSequence& part)
+    {
+        int off = 0;
+        for (const auto& note : part.notes)
+        {
+            const auto* segment = analysis.chordAt(note.startTick);
+            if (segment != nullptr && ! segment->chord.containsPitchClass(note.pitch % 12))
+                ++off;
+        }
+        return part.notes.empty() ? 0.0f
+                                  : static_cast<float>(off) / static_cast<float>(part.notes.size());
+    };
+
+    float freeTotal = 0.0f, boundTotal = 0.0f;
+    for (uint32_t seed = 1; seed <= 8; ++seed)
+    {
+        auto options = cleanOptions(PartType::Pattern);
+        options.seed = seed;
+        options.motifDevelopment = 0.0f;
+
+        options.followChords = 0.0f;
+        freeTotal += offChordShare(engine.generate(options));
+
+        options.followChords = 1.0f;
+        boundTotal += offChordShare(engine.generate(options));
+    }
+
+    // Fully bound leaves nothing off the chord; fully free keeps a real share
+    // of the figure's own notes.
+    CHECK(boundTotal == 0.0f);
+    CHECK(freeTotal > 0.5f);
+}
+
+TEST(CraftVariesThePatternWithoutLosingIt)
+{
+    // Turned up, the repeats stop being copies - but the first bar is always
+    // the figure itself, because you have to hear it before you hear it change.
+    auto engine = engineFromBassLine();
+
+    auto plain = cleanOptions(PartType::Pattern);
+    plain.motifDevelopment = 0.0f;
+    plain.followChords = 0.0f;
+    const auto literal = engine.generate(plain);
+
+    auto worked = plain;
+    worked.motifDevelopment = 1.0f;
+    const auto varied = engine.generate(worked);
+
+    CHECK(! literal.empty());
+    CHECK(! varied.empty());
+
+    const int64_t barTicks = literal.ticksPerBar();
+    const auto firstBar = [barTicks](const NoteSequence& part)
+    {
+        std::vector<std::pair<int64_t, int>> out;
+        for (const auto& note : part.notes)
+            if (note.startTick < barTicks)
+                out.emplace_back(note.startTick, note.pitch);
+        return out;
+    };
+    CHECK(firstBar(literal) == firstBar(varied));
+
+    // And the later bars are no longer all the same as each other.
+    std::set<std::vector<std::pair<int64_t, int>>> shapes;
+    for (const auto& note : varied.notes)
+        (void) note;
+    std::map<int64_t, std::vector<std::pair<int64_t, int>>> bars;
+    for (const auto& note : varied.notes)
+        bars[note.startTick / barTicks].emplace_back(note.startTick % barTicks, note.pitch);
+    for (const auto& [bar, notes] : bars)
+        shapes.insert(notes);
+    CHECK(shapes.size() > 1);
 }
