@@ -461,8 +461,17 @@ int main(int argc, char** argv)
         check(after.size() == 4, "reharmonisation keeps the number of chords");
         check(after[0].chord.root == 9, "the first pinned chord survived");
         check(after[2].chord.root == 0, "and so did the third");
-        check(processor.getEngine().analysis().progressionString() != before,
-              "while the free ones did change");
+        juce::ignoreUnused(before);
+
+        // Deliberately not asserting here that the free chords moved. The
+        // processor seeds itself from the system random, reharmonise picks
+        // among five substitutions, and several of them are no-ops for a given
+        // chord - so a single roll changing nothing is correct behaviour, not a
+        // failure. Asserting on it made this test flaky, and it passed here
+        // twice before CI caught it on Windows. That reharmonise does move the
+        // free chords is covered deterministically, on a fixed seed, by
+        // LockedChordsSurviveAReharmonisation in the core tests. What belongs
+        // here is only that the plug-in wires the locks through to it.
 
         processor.undo();
 
