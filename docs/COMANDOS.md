@@ -154,7 +154,7 @@ oitava só, nunca duas notas juntas. O `--density` decide se ele segura ou repet
 ## Compartilhar
 
 O jeito fácil: mande o link das
-[Releases](https://github.com/andrebeltrame/claudeapp/releases). O zip tem duas
+[Releases](https://github.com/andrebeltrame/ProgressionsVST3/releases). O zip tem duas
 coisas: o plugin, que serve para Mac e Windows, e o `INSTALL.txt` dizendo onde
 colocá-lo. O `install-windows.ps1` fica ao lado na mesma página, para quem
 esbarrar em problema.
@@ -212,7 +212,7 @@ artefatos `macos-build` e `windows-build`, e rode:
 cd ~/Downloads
 unzip -o macos-build.zip
 unzip -o windows-build.zip
-cd ~/caminho/para/claudeapp
+cd ~/harmonia
 packaging/merge.sh ~/Downloads/macos-bundle.zip ~/Downloads/Progressions.vst3 ~/Desktop
 ```
 

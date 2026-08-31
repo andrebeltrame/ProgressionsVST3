@@ -533,7 +533,7 @@ para arrastar.
 O build de macOS é **universal** (Intel e Apple Silicon) e o CI falha se não
 for, ou se o selo do bundle estiver quebrado.
 
-Baixe nas [Releases](https://github.com/andrebeltrame/claudeapp/releases), ou
+Baixe nas [Releases](https://github.com/andrebeltrame/ProgressionsVST3/releases), ou
 em **Actions → o build mais recente → Artifacts** para uma versão de
 desenvolvimento.
 
@@ -558,7 +558,7 @@ O projeto está no GitHub; o container onde ele foi escrito é descartável.
 Para trazer tudo para o seu computador:
 
 ```bash
-git clone https://github.com/andrebeltrame/claudeapp.git harmonia
+git clone https://github.com/andrebeltrame/ProgressionsVST3.git harmonia
 cd harmonia
 git checkout claude/vst3-music-idea-generator-vqgacc
 ```
