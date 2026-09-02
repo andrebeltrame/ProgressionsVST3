@@ -20,6 +20,22 @@ const juce::StringArray kArpChoices { "Up", "Down", "Up-Down", "Down-Up", "Conve
 const juce::StringArray kHarmonyChoices { "Auto", "1 per bar", "2 per bar", "1 per beat" };
 const juce::StringArray kAccidentalChoices { "Key", "Sharps", "Flats" };
 const juce::StringArray kMeterChoices { "From clip", "4/4", "3/4", "6/8", "5/4", "7/8" };
+const juce::StringArray kChordBarChoices { "From clip", "1/2 bar", "1 bar", "2 bars", "4 bars", "8 bars" };
+
+/** How long each chord is held, in bars. Zero means "leave the clip's own
+    harmonic rhythm alone", which is index 0. */
+float barsPerChordForChoice(int index)
+{
+    switch (index)
+    {
+        case 1:  return 0.5f;
+        case 2:  return 1.0f;
+        case 3:  return 2.0f;
+        case 4:  return 4.0f;
+        case 5:  return 8.0f;
+        default: return 0.0f;
+    }
+}
 
 /** The time signature behind each entry of kMeterChoices; index 0 is unused. */
 harmonia::TimeSignature meterForChoice(int choice)
@@ -106,7 +122,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout ProgressionsProcessor::creat
                                                          {
                                                              return juce::String(value, 1) + " dB";
                                                          })));
-    layout.add(std::make_unique<AudioParameterBool>(ParameterID { ParamID::hostSync, 1 }, "Sync To Host", true));
+    // Off by default. When you press play in the host you are listening to your
+    // track, and having the plug-in blurt its current part over the top is noise
+    // - and by the time you want that part in the arrangement you have dragged
+    // the MIDI out rather than relying on the plug-in to play it live. The
+    // switch is right there for whoever wants the other behaviour. Projects
+    // already saved keep whatever they stored; only new instances start off.
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { ParamID::hostSync, 1 }, "Sync To Host", false));
     layout.add(std::make_unique<AudioParameterInt>(ParameterID { ParamID::midiChannel, 1 }, "MIDI Channel", 1, 16, 1));
     layout.add(std::make_unique<AudioParameterChoice>(ParameterID { ParamID::harmonicRhythm, 1 }, "Harmonic Rhythm",
                                                       kHarmonyChoices, 0));
@@ -121,6 +143,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout ProgressionsProcessor::creat
                                                       kAccidentalChoices, 0));
     layout.add(std::make_unique<AudioParameterChoice>(ParameterID { ParamID::meter, 1 }, "Time Signature",
                                                       kMeterChoices, 0));
+    layout.add(std::make_unique<AudioParameterChoice>(ParameterID { ParamID::chordBars, 1 }, "Chord Length",
+                                                      kChordBarChoices, 0));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { ParamID::reharmAmount, 1 }, "Reharmonise Amount",
                                                      NormalisableRange<float> { 0.0f, 1.0f }, 0.5f, percentAttributes));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { ParamID::glide, 1 }, "Reese Glide", true));
@@ -140,7 +164,7 @@ ProgressionsProcessor::ProgressionsProcessor()
                             ParamID::follow, ParamID::avoid, ParamID::arpPattern,
                             ParamID::harmonicRhythm, ParamID::useStyle, ParamID::styleAmount,
                             ParamID::stackParts, ParamID::accidentals, ParamID::meter,
-                            ParamID::glide, ParamID::followChords })
+                            ParamID::glide, ParamID::followChords, ParamID::chordBars })
         apvts.addParameterListener(id, this);
 
     previewSynth.addSound(new PreviewSound());
@@ -164,7 +188,7 @@ ProgressionsProcessor::~ProgressionsProcessor()
                             ParamID::follow, ParamID::avoid, ParamID::arpPattern,
                             ParamID::harmonicRhythm, ParamID::useStyle, ParamID::styleAmount,
                             ParamID::stackParts, ParamID::accidentals, ParamID::meter,
-                            ParamID::glide, ParamID::followChords })
+                            ParamID::glide, ParamID::followChords, ParamID::chordBars })
         apvts.removeParameterListener(id, this);
 
     if (dragFile.existsAsFile())
@@ -531,6 +555,13 @@ void ProgressionsProcessor::applyAnalysisOptions()
 void ProgressionsProcessor::regenerate()
 {
     applyAnalysisOptions();
+
+    // How long each chord is held. Not an analysis option: it does not change
+    // how the clip is read, only how far the harmony is spread over the bars
+    // once it has been.
+    engine.setBarsPerChord(barsPerChordForChoice(
+        juce::jlimit(0, kChordBarChoices.size() - 1,
+                     static_cast<int>(apvts.getRawParameterValue(ParamID::chordBars)->load()))));
 
     // With no clip to take a tempo from, follow the host - and the meter the
     // user asked for, since there is no file to read one from.

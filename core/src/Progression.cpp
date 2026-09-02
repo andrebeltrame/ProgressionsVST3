@@ -481,6 +481,26 @@ void applyProgressionTo(Analysis& analysis, const std::vector<Chord>& chords)
     }
 }
 
+void stretchHarmony(Analysis& analysis, int64_t ticksPerChord)
+{
+    if (! analysis.valid || analysis.progression.empty() || ticksPerChord <= 0)
+        return;
+
+    int64_t cursor = 0;
+    for (auto& segment : analysis.progression)
+    {
+        segment.startTick = cursor;
+        segment.lengthTick = ticksPerChord;
+        cursor += ticksPerChord;
+    }
+
+    analysis.lengthTicks = cursor;
+
+    const int64_t bar = analysis.ticksPerBar();
+    if (bar > 0)
+        analysis.bars = static_cast<int>((cursor + bar - 1) / bar);
+}
+
 // ---------------------------------------------------------------------------
 // Inventing harmony out of nothing
 

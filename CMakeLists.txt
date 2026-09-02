@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Harmonia VERSION 1.4.0 LANGUAGES C CXX)
+project(Harmonia VERSION 1.5.0 LANGUAGES C CXX)
 
 if(MSVC)
     # Link the C++ runtime statically. Otherwise the plugin needs the Visual

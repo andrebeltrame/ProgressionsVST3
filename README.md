@@ -590,9 +590,19 @@ Detalhes que valem saber:
   se o clipe for um pad de semibreves e você quiser algo mexido.
 - **Stay clear** mantém a parte nova fora do registro que o clipe já ocupa —
   é o que impede um pad de subir em cima do lead.
-- **Host sync** toca junto com o transporte do DAW; desligado, o botão **Play**
-  roda em loop no andamento do próprio clipe.
+- **Host sync** toca junto com o transporte do DAW. **Nasce desligado**: quando
+  você aperta play no Live está ouvindo a sua música, e o plugin despejar a parte
+  atual por cima é ruído — e quando você quer aquilo na faixa, você arrasta o
+  MIDI para fora. Ligue quando quiser o plugin tocando ao vivo com o transporte.
+  Projeto já salvo mantém o que guardou; só instância nova nasce desligada.
 - **Length** repete a progressão até completar 1, 2, 4, 8 ou 16 compassos.
+- **Chord length** é o outro eixo, e não se confunda com o Length: ele diz
+  quanto tempo **cada acorde** é segurado — ½, 1, 2, 4 ou 8 compassos. Quatro
+  acordes em *2 bars* são os mesmos quatro acordes ao longo de oito compassos,
+  cada um no dobro do tempo — a progressão é **esticada**, não repetida. É o que
+  um pad lento pede, e é o que dobrar o loop de um clipe faz no DAW. Em *From
+  clip* ele deixa o ritmo harmônico que o clipe (ou os acordes digitados) já
+  tinham. O painel de análise mostra a conta pronta: `4 chords x 2 bars`.
 - **Craft** decide o quanto a melodia trabalha o motivo. Em 0 ela só repete e
   transpõe; subindo, o motivo é invertido, tocado ao contrário, fragmentado, e
   os saltos de terça ganham a nota de passagem no meio. Só vale para Melody e

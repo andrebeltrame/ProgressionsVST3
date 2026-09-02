@@ -142,6 +142,13 @@ tempo — se for o seu caso, peça sem sobreposição:
 ./build/cli/harmonia-cli resources/examples/bass_loop.mid --part reese --no-glide --out ~/ideias
 ```
 
+O `--chord-bars` segura cada acorde por mais tempo, esticando a progressão em vez
+de repeti-la — os mesmos quatro acordes ocupando oito compassos:
+
+```bash
+./build/cli/harmonia-cli resources/examples/bass_loop.mid --chord-bars 2 --part pad --out ~/ideias
+```
+
 O **Pattern** inventa uma figura e a repete, com os acordes passando por baixo.
 O `--follow-chords` decide o quanto ela cede à harmonia — 0 mantém a figura
 intacta, 1 puxa tudo para as notas do acorde e vira arpejo:

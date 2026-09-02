@@ -277,6 +277,37 @@ Anything that means a *particular* part must name it, never count to it. The
 Sub's "never two at once" check said `kNumParts - 1`, and the moment `Pattern`
 was appended it started asserting the Sub's rules against a different part.
 
+### Length and chord length are different axes
+
+`GenerateOptions::bars` says how long the result is and repeats the progression
+to fill it. `Engine::setBarsPerChord` says how long each chord is *held*, and
+stretches the progression instead - the same four chords over eight bars rather
+than the loop played twice, which is what a slow pad wants and what doubling a
+clip's loop length does in a DAW. Conflating them is the obvious mistake: a user
+asking for eight bars of four chords may mean either, and only the second one is
+new.
+
+`stretchHarmony` rewrites the segments absolutely rather than by a multiplier, so
+applying it twice is the same as applying it once - which matters because
+`rebuildFromWrittenChords` is reached both directly and through `reanalyse`. It
+touches nothing but the progression: tempo, meter, groove and detected role stay,
+so parts written over it keep their feel while the harmony moves under them more
+slowly.
+
+There is a third control that sounds like both and is neither.
+`AnalysisOptions::chordsPerBar` (the plugin's **Chord changes**) constrains the
+*detector* on the way in. One is about reading a clip, the other about writing
+over it.
+
+### The host transport does not start the plugin
+
+`hostSync` defaults to false. Pressing play in the DAW means listening to the
+track being written, and the plugin adding its current part over the top is
+noise - and by the time that part belongs in the arrangement the MIDI has been
+dragged out rather than played live from here. The switch stays, for whoever
+wants the other behaviour; only the default moved. Projects already saved keep
+whatever they stored, because a parameter default applies to new instances only.
+
 ### A locked chord is locked everywhere
 
 `ProgressionsProcessor::lockedChords` is a decision about the session, not

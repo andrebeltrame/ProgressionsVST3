@@ -19,6 +19,14 @@ std::vector<int> roots(const std::vector<Chord>& chords)
     return out;
 }
 
+std::vector<Chord> chordsOf(const Analysis& analysis)
+{
+    std::vector<Chord> out;
+    for (const auto& segment : analysis.progression)
+        out.push_back(segment.chord);
+    return out;
+}
+
 std::vector<int> progressionRoots(const Analysis& analysis)
 {
     std::vector<int> out;
@@ -308,4 +316,69 @@ TEST(AnInventedKeyIsRepeatable)
     for (uint32_t seed = 1; seed <= 40; ++seed)
         tonics.insert(inventKey(seed).tonic);
     CHECK(tonics.size() >= 5);
+}
+
+TEST(HarmonyIsStretchedNotRepeated)
+{
+    // The difference between a progression that repeats to fill more bars and
+    // one that is expanded to fill them. Four chords over eight bars, each held
+    // twice as long - which is what a slow pad wants, and what doubling a clip's
+    // loop length does in a DAW.
+    Engine engine;
+    engine.setSource(fixtures::bassClip({ 36, 33, 29, 31 }));
+
+    const auto before = engine.analysis();
+    CHECK(before.progression.size() == 4);
+    CHECK(before.bars == 4);
+
+    engine.setBarsPerChord(2.0f);
+    const auto after = engine.analysis();
+
+    // The same four chords, in the same order - nothing was added.
+    CHECK(after.progression.size() == 4);
+    CHECK(roots(chordsOf(after)) == roots(chordsOf(before)));
+
+    // Twice as long, and each chord holds for two bars.
+    CHECK(after.bars == 8);
+    const int64_t bar = after.ticksPerBar();
+    for (size_t i = 0; i < after.progression.size(); ++i)
+    {
+        CHECK(after.progression[i].lengthTick == bar * 2);
+        CHECK(after.progression[i].startTick == static_cast<int64_t>(i) * bar * 2);
+    }
+
+    // Tempo, meter and the clip's groove are untouched - only the harmony moved.
+    CHECK(after.bpm == before.bpm);
+    CHECK(after.timeSignature.numerator == before.timeSignature.numerator);
+    CHECK(after.rhythm.notesPerBar == before.rhythm.notesPerBar);
+
+    // And it goes back.
+    engine.setBarsPerChord(0.0f);
+    CHECK(engine.analysis().bars == 4);
+}
+
+TEST(OneChordCanFillTheWholeThing)
+{
+    Engine engine;
+    std::string error;
+    CHECK(engine.setProgressionText("Am", error));
+
+    engine.setBarsPerChord(8.0f);
+    const auto& analysis = engine.analysis();
+    CHECK(analysis.progression.size() == 1);
+    CHECK(analysis.bars == 8);
+    CHECK(analysis.progression[0].lengthTick == analysis.ticksPerBar() * 8);
+
+    // A part written over it stretches across all eight bars rather than being
+    // eight copies of a one-bar idea. Checked against the key rather than the
+    // triad: the pad extends chords as the Colour knob allows, so a seventh or
+    // a ninth over Am is right and only looks wrong from the triad's side.
+    GenerateOptions options;
+    options.part = PartType::Pad;
+    options.seed = 3;
+    const auto pad = engine.generate(options);
+    CHECK(! pad.empty());
+    CHECK(pad.lengthTicks() > analysis.ticksPerBar() * 6);
+    for (const auto& note : pad.notes)
+        CHECK(analysis.key.contains(note.pitch % 12));
 }

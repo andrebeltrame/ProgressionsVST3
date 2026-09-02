@@ -440,6 +440,47 @@ int main(int argc, char** argv)
         processor.regenerate();
     }
 
+    // ---- Chord length stretches instead of repeating ---------------------------
+    {
+        processor.resetProgression();
+        const auto& analysis = processor.getEngine().analysis();
+        const auto chordsBefore = analysis.progression.size();
+        const int barsBefore = analysis.bars;
+        check(chordsBefore == 4, "four chords to start from");
+
+        auto* chordBars = processor.apvts.getParameter(ParamID::chordBars);
+        chordBars->setValueNotifyingHost(chordBars->convertTo0to1(3.0f)); // 2 bars
+        processor.regenerate();
+
+        const auto& stretched = processor.getEngine().analysis();
+        check(stretched.progression.size() == chordsBefore,
+              "holding each chord longer adds no chords");
+        check(stretched.bars == barsBefore * 2, "and doubles the length");
+        check(stretched.progression[0].lengthTick == stretched.ticksPerBar() * 2,
+              "each chord lasting two bars");
+        check(stretched.progression[1].startTick == stretched.ticksPerBar() * 2,
+              "so the second one starts at bar three");
+
+        // The generated part follows it out to the new length rather than
+        // repeating a shorter idea.
+        check(! processor.getGeneratedSequence().empty(), "and a part is written over it");
+        check(processor.getGeneratedSequence().playbackLengthTicks() > stretched.ticksPerBar() * 6,
+              "spanning the stretched bars");
+
+        chordBars->setValueNotifyingHost(chordBars->convertTo0to1(0.0f)); // From clip
+        processor.regenerate();
+        check(processor.getEngine().analysis().bars == barsBefore, "and it goes back");
+    }
+
+    // ---- The host transport does not start the plug-in by default --------------
+    {
+        // Pressing play in the DAW means listening to your track; the plug-in
+        // adding its current part over the top is noise. The switch is there for
+        // whoever wants it, but it starts off.
+        check(processor.apvts.getRawParameterValue(ParamID::hostSync)->load() < 0.5f,
+              "host sync is off unless asked for");
+    }
+
     // ---- Locked chords --------------------------------------------------------
     {
         processor.resetProgression();

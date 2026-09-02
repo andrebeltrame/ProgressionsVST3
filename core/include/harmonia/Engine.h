@@ -63,6 +63,16 @@ public:
     /** Key used for reading roman numerals and for generating without a clip. */
     void setKey(const Key& key);
 
+    /** How long each chord is held, in bars. Zero leaves the clip's own
+        harmonic rhythm alone, which is the default.
+
+        This is not the same axis as `GenerateOptions::bars`. That one says how
+        long the result is and repeats the progression to fill it; this one says
+        how long each chord lasts, so four chords over eight bars can be the
+        same four chords held twice as long rather than the loop played twice. */
+    void setBarsPerChord(float bars);
+    float barsPerChord() const noexcept { return harmonyHold; }
+
     /** Tempo, meter and length used when there is no source clip. */
     void setBlankCanvas(double bpm, int barsPerChord, const TimeSignature& timeSignature = {});
     double blankBpm() const noexcept { return canvasBpm; }
@@ -71,6 +81,7 @@ private:
     void reanalyse();
 
     void rebuildFromWrittenChords();
+    void applyHarmonyHold();
 
     NoteSequence sourceSequence;
     AnalysisOptions options;
@@ -80,6 +91,7 @@ private:
     bool writtenProgression = false;
     std::string writtenText;
     std::vector<Chord> writtenChords;
+    float harmonyHold = 0.0f;
     double canvasBpm = 122.0;
     int canvasBarsPerChord = 1;
     TimeSignature canvasTimeSignature;

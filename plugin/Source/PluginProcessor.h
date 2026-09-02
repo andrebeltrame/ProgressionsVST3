@@ -37,6 +37,7 @@ constexpr const char* meter = "meter";
 constexpr const char* reharmAmount = "reharmAmount";
 constexpr const char* glide = "glide";
 constexpr const char* followChords = "followChords";
+constexpr const char* chordBars = "chordBars";
 } // namespace ParamID
 
 /** Every part the plugin can write, in the order the tabs show them. */

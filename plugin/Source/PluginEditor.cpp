@@ -195,7 +195,7 @@ ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
 
     // ---- Side panel controls -------------------------------------------------
     for (auto* label : { &lengthLabel, &arpLabel, &harmonyLabel, &levelLabel,
-                         &meterLabel, &accidentalLabel })
+                         &meterLabel, &accidentalLabel, &chordBarsLabel })
     {
         label->setFont(juce::FontOptions(11.0f, juce::Font::bold));
         label->setColour(juce::Label::textColourId, textDim);
@@ -219,6 +219,17 @@ ProgressionsEditor::ProgressionsEditor(ProgressionsProcessor& p)
     addAndMakeVisible(meterBox);
     meterAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         processor.apvts, ParamID::meter, meterBox);
+
+    chordBarsBox.addItemList({ "From clip", "1/2 bar", "1 bar", "2 bars", "4 bars", "8 bars" }, 1);
+    chordBarsBox.setTooltip("How long each chord is held. This is not Length - Length says how "
+                            "long the result is and repeats the progression to fill it, while "
+                            "this says how long each chord lasts. Four chords at 2 bars is the "
+                            "same four chords over eight bars, held twice as long, rather than "
+                            "the loop played twice. From clip keeps whatever harmonic rhythm the "
+                            "clip or the typed chords already had.");
+    addAndMakeVisible(chordBarsBox);
+    chordBarsAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        processor.apvts, ParamID::chordBars, chordBarsBox);
 
     accidentalBox.addItemList({ "Key", "Sharps  #", "Flats  b" }, 1);
     accidentalBox.setTooltip("How notes and chords are spelled. Key uses the accidentals the key "
@@ -539,6 +550,18 @@ void ProgressionsEditor::refresh()
         rows.emplace_back("Tempo", formatBpm(analysis.bpm) + "  " + juce::String(analysis.timeSignature.numerator)
                                        + "/" + juce::String(analysis.timeSignature.denominator));
         rows.emplace_back("Length", juce::String(analysis.bars) + " bars");
+        // Says the arithmetic out loud, so nobody has to work out what a chord
+        // length of 2 does to a progression of four.
+        if (! analysis.progression.empty())
+        {
+            const double barsEach = static_cast<double>(analysis.progression.front().lengthTick)
+                                  / static_cast<double>(juce::jmax<juce::int64>(1, analysis.ticksPerBar()));
+            rows.emplace_back("Harmony", juce::String(static_cast<int>(analysis.progression.size()))
+                                             + (analysis.progression.size() == 1 ? " chord x " : " chords x ")
+                                             + (barsEach < 0.99 ? juce::String(barsEach, 2)
+                                                                : juce::String(juce::roundToInt(barsEach)))
+                                             + (barsEach < 1.99 ? " bar" : " bars"));
+        }
         rows.emplace_back("Clip reads as", juce::String(toString(analysis.role)));
         rows.emplace_back("Register", juce::String(noteName(analysis.rhythm.lowestPitch, preferFlats())) + " - "
                                           + juce::String(noteName(analysis.rhythm.highestPitch, preferFlats())));
@@ -1059,15 +1082,19 @@ void ProgressionsEditor::resized()
         auto settingsLabels = block.removeFromBottom(14);
         block.removeFromBottom(8);
 
-        // Key, Mode, Length, Time, Spelling - five cells across the block.
-        const int cell = settingsRow.getWidth() / 5;
+        // Key, Mode, Length, Chord length, Time, Spelling - six cells across the
+        // block. Chord length sits next to Length because they are the two axes
+        // of the same question: how long the result is, and how long each chord
+        // in it lasts.
+        constexpr int cellCount = 6;
+        const int cell = settingsRow.getWidth() / cellCount;
         juce::Label* settingLabels[] = { &keyRootLabel, &keyModeLabel, &lengthLabel,
-                                         &meterLabel, &accidentalLabel };
+                                         &chordBarsLabel, &meterLabel, &accidentalLabel };
         juce::ComboBox* settingBoxes[] = { &keyRootBox, &keyModeBox, &lengthBox,
-                                           &meterBox, &accidentalBox };
-        for (int i = 0; i < 5; ++i)
+                                           &chordBarsBox, &meterBox, &accidentalBox };
+        for (int i = 0; i < cellCount; ++i)
         {
-            const bool last = i == 4;
+            const bool last = i == cellCount - 1;
             auto labelCell = last ? settingsLabels : settingsLabels.removeFromLeft(cell);
             auto boxCell = last ? settingsRow : settingsRow.removeFromLeft(cell);
             settingLabels[i]->setBounds(labelCell.reduced(2, 0));

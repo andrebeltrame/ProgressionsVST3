@@ -1,3 +1,4 @@
+#include <cmath>
 #include "harmonia/Engine.h"
 
 namespace harmonia
@@ -60,6 +61,31 @@ void Engine::reanalyse()
 
     if (writtenProgression)
         rebuildFromWrittenChords();
+    else
+        applyHarmonyHold();
+}
+
+void Engine::applyHarmonyHold()
+{
+    if (harmonyHold <= 0.0f)
+        return;
+
+    // Absolute rather than a multiplier, so applying it twice is the same as
+    // applying it once - which matters because rebuildFromWrittenChords is
+    // reached both directly and through reanalyse.
+    stretchHarmony(currentAnalysis,
+                   static_cast<int64_t>(std::llround(static_cast<double>(harmonyHold)
+                                                     * static_cast<double>(currentAnalysis.ticksPerBar()))));
+    detectedProgression = currentAnalysis.progression;
+}
+
+void Engine::setBarsPerChord(float bars)
+{
+    const float wanted = bars > 0.0f ? bars : 0.0f;
+    if (harmonyHold == wanted)
+        return;
+    harmonyHold = wanted;
+    reanalyse();
 }
 
 void Engine::rebuildFromWrittenChords()
@@ -80,6 +106,7 @@ void Engine::rebuildFromWrittenChords()
     {
         applyProgressionTo(currentAnalysis, writtenChords);
     }
+    applyHarmonyHold();
     detectedProgression = currentAnalysis.progression;
 }
 

@@ -87,11 +87,12 @@ private:
     Knob densityKnob, complexityKnob, humanizeKnob, swingKnob, octaveKnob, voicesKnob, craftKnob, styleKnob,
          reharmKnob, followKnob;
 
-    juce::ComboBox lengthBox, arpBox, harmonyBox, keyRootBox, keyModeBox, meterBox, accidentalBox;
+    juce::ComboBox lengthBox, arpBox, harmonyBox, keyRootBox, keyModeBox, meterBox, accidentalBox, chordBarsBox;
     juce::Label lengthLabel { {}, "Length" }, arpLabel { {}, "Arp shape" },
                 harmonyLabel { {}, "Chord changes" },
                 keyRootLabel { {}, "Key" }, keyModeLabel { {}, "Mode" },
-                meterLabel { {}, "Time" }, accidentalLabel { {}, "Spelling" };
+                meterLabel { {}, "Time" }, accidentalLabel { {}, "Spelling" },
+                chordBarsLabel { {}, "Chord length" };
 
     /** The harmony block: the chords you type, and everything that decides how
         they are read. Grouped because typing a progression you looked up
@@ -119,7 +120,7 @@ private:
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> lengthAttachment, arpAttachment,
                                                                             harmonyAttachment, meterAttachment,
-                                                                            accidentalAttachment;
+                                                                            accidentalAttachment, chordBarsAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> followAttachment, avoidAttachment,
                                                                           syncAttachment, previewAttachment,
                                                                           styleAttachment, stackAttachment,

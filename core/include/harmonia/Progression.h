@@ -65,4 +65,17 @@ Analysis analysisFromProgression(const std::vector<Chord>& chords,
     snapped to the beat grid. */
 void applyProgressionTo(Analysis& analysis, const std::vector<Chord>& chords);
 
+/** Holds each chord for `ticksPerChord`, stretching the analysis to fit.
+
+    This is the difference between a progression that *repeats* to fill more
+    bars and one that is *expanded* to fill them: the same four chords over
+    eight bars, each held twice as long, which is what a slow pad wants. Tempo,
+    meter, groove and detected role are untouched - only how long each chord is
+    held changes, so the parts written over it keep their feel while the harmony
+    moves underneath them more slowly.
+
+    Does nothing when `ticksPerChord` is zero, which is how "leave the clip's
+    own harmonic rhythm alone" is expressed. */
+void stretchHarmony(Analysis& analysis, int64_t ticksPerChord);
+
 } // namespace harmonia

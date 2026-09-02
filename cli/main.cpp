@@ -267,6 +267,9 @@ void printUsage()
         "  --chords-per-bar <n> force the harmonic grid of the analysis\n"
         "  --key <name>         force the key, e.g. \"F# minor\", \"Bb major\", \"D dorian\"\n"
         "  --reharm <0..1>      reharmonise before writing\n"
+        "  --chord-bars <n>     hold each chord for n bars (0.5, 1, 2, 4, 8). The\n"
+        "                       progression is stretched, not repeated: the same four\n"
+        "                       chords over eight bars rather than the loop twice\n"
         "  --follow-chords <0..1> pattern: how far the figure bends to the chord\n"
         "                       under it. 0 keeps its notes, 1 makes it an arpeggio\n"
         "  --no-glide           reese: end each note where the next begins, so\n"
@@ -869,6 +872,7 @@ int runGenerate(const std::vector<std::string>& args)
     std::vector<std::string> partNames { "pad", "melody" };
     int variations = 1;
     int barsPerChord = 1;
+    float chordBars = 0.0f;   // 0 = leave the clip's own harmonic rhythm alone
     double bpm = 122.0;
     float reharm = 0.0f;
     bool infoOnly = false;
@@ -907,6 +911,7 @@ int runGenerate(const std::vector<std::string>& args)
         else if (arg == "--voices")                    generateOptions.maxVoices = std::stoi(value());
         else if (arg == "--chords-per-bar")            analysisOptions.chordsPerBar = std::stoi(value());
         else if (arg == "--reharm")                    reharm = std::stof(value());
+        else if (arg == "--chord-bars")                chordBars = std::stof(value());
         else if (arg == "--follow-chords")             generateOptions.followChords = std::stof(value());
         else if (arg == "--no-glide")                  generateOptions.glide = false;
         else if (arg == "--no-follow")                 generateOptions.followSourceRhythm = false;
@@ -947,6 +952,7 @@ int runGenerate(const std::vector<std::string>& args)
     }
     engine.setAnalysisOptions(analysisOptions);
     engine.setBlankCanvas(bpm, barsPerChord);
+    engine.setBarsPerChord(chordBars);
 
     std::string error;
     if (! input.empty())
